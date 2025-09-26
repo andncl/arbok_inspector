@@ -10,3 +10,6 @@ dependencies = [
     "qcodes>=0.53.0",
     "xarray>=2025.9.0",
 ]
+
+[project.scripts]
+arbok_inspector = "arbok_inspector.cli:main"
