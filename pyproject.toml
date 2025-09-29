@@ -15,3 +15,10 @@ dependencies = [
 
 [project.scripts]
 arbok_inspector = "arbok_inspector.cli:main"
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
