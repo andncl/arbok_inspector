@@ -61,6 +61,10 @@ class Run:
         ))
         return fig
 
+    def select_index(self, dim, index):
+        # if dim in self.full_data_set.dims:
+        value = self.full_data_set[dim].values[index]
+
 class RunResult(AnalysisBase):
     def __init__(self, run: Run, readout_name: str):
         self.run_id = run.run_id
@@ -77,30 +81,18 @@ async def run_page(run_id: str):
     
     with ui.row().classes('w-full max-w-2xl mx-auto p-4'):
         ui.label("Coordinates:").classes('text-lg font-semibold')
-        run_table_rows = []
+        # run_table_rows = []
         for i, dim in enumerate(run.full_data_set.dims):
-            x, y = False, False
             if i == len(run.full_data_set.dims) - 1:
-                x = True
+                selection = 4
             elif i == len(run.full_data_set.dims) - 2:
-                y = True
-            run_table_rows.append({
-                'name': dim.replace("__", "."),
-                'size': run.full_data_set.sizes[dim],
-                'x': x,
-                'y': y,
-                'average': 'average' if run.subset_dims[dim] == 'average' else '',
-            })
-        grid = ui.aggrid({
-            'columnDefs': run_table_columns,
-            'rowData': run_table_rows,
-            ':getRowId': '(params) => params.data.name',
-            "rowSelection": "multiple",
-            "defaultColDef": {"resizable": True, "sortable": True},
-        }).classes('w-full max-w-2xl')
-            # with ui.row().classes('w-full items-center mb-2'):
-            #     add_dim_dropdown(dim, run)
-
+                selection = 3
+            else:
+                selection = 2
+            if 'iteration' in dim:
+                selection = 1
+            with ui.row().classes('w-full items-center mb-2'):
+                add_dim_dropdown(dim, run, selection)
     
     with ui.row().classes('w-full max-w-2xl mx-auto p-4'):
         container = ui.row().classes('w-full')
@@ -111,13 +103,47 @@ async def run_page(run_id: str):
     with ui.expansion('xarray summary', icon='expand_more', value = True).classes(expansion_style):
         run.display_summary()
 
-def add_dim_dropdown(dim: str, run: Run):
-    with ui.dropdown_button(f'{dim.replace("__", ".")}', auto_close = True).classes('mr-2'):
-        ui.item('select_element', on_click=lambda: run.update_subset_dims(dim, 'select_element'))
-        ui.item('average', on_click=lambda: run.update_subset_dims(dim, 'average'))
-        ui.item('y-axis', on_click=lambda: run.update_subset_dims(dim, 'y-axis'))
-        ui.item('x-axis', on_click=lambda: run.update_subset_dims(dim, 'x-axis'))
+def add_dim_dropdown(dim: str, run: Run, selection: int):
+    # with ui.column().classes('mr-4'):
+    #     ui.label(f'{dim.replace("__", ".")}')
+    with ui.row().classes('w-full'):
+        with ui.column().classes('w-1/2'):
+            select_placeholder = ui.column().classes('flex')
+        with ui.column().classes('w-1/3'):
+            with ui.row():
+                slider_placeholder = ui.column().classes('flex')
+            with ui.row().classes('w-1/6'):
+                label_placeholder = ui.column().classes('flex')
+        placeholders = (slider_placeholder, label_placeholder)
+        ui.select(
+            options = {1: 'average', 2: 'select value', 3: 'y-axis', 4: 'x-axis'},
+            value = selection,
+            label = f'{dim.replace("__", ".")}',
+            on_change = lambda e: update_dim_selection(run, dim, e.value, placeholders)
+        ).classes('w-1/2').parent = select_placeholder
 
+def update_dim_selection(run: Run, dim: str, value, placeholder):
+    placeholder[0].clear()
+    placeholder[1].clear()
+    if value == 2:
+        dim_size = run.full_data_set.sizes[dim]
+        slider = ui.slider(
+            min=0, max=dim_size - 1, step=1, value=0,
+            # on_change=lambda e: print(e.value)
+        ).classes('w-1/2')
+        slider.props('label-always')
+        slider.parent = placeholder[0]
+        slider.on(
+            'update:model-value', lambda e: update_value_from_slider(label, slider, run, dim),
+            throttle=0.2, leading_events=False)
+        label = ui.label(f'Value: {run.full_data_set[dim].values[0]}').classes('ml-4')
+        ui.label().bind_text_from(slider, 'value')
+
+def update_value_from_slider(label, slider, run: Run, dim: str):
+    label.text = f'Value: {run.full_data_set[dim].values[slider.value]}'
+    run.select_index(dim, slider.value)
+
+    lambda e: run.select_index(dim, e.args)
 def add_plot_ui(run, readout, container):
     print('plotting!!!')
     with ui.row().classes('w-full max-w-2xl mx-auto my-4'):
@@ -125,3 +151,25 @@ def add_plot_ui(run, readout, container):
     fig = run.add_plot(readout)
     ui_fig = ui.plotly(fig).classes('w-full max-w-2xl mx-auto mb-4')
     ui_fig.parent = container
+
+
+
+        #     x, y = False, False
+        #     if i == len(run.full_data_set.dims) - 1:
+        #         x = True
+        #     elif i == len(run.full_data_set.dims) - 2:
+        #         y = True
+        #     run_table_rows.append({
+        #         'name': dim.replace("__", "."),
+        #         'size': run.full_data_set.sizes[dim],
+        #         'x': x,
+        #         'y': y,
+        #         'average': 'average' if run.subset_dims[dim] == 'average' else '',
+        #     })
+        # grid = ui.aggrid({
+        #     'columnDefs': run_table_columns,
+        #     'rowData': run_table_rows,
+        #     ':getRowId': '(params) => params.data.name',
+        #     "rowSelection": "multiple",
+        #     "defaultColDef": {"resizable": True, "sortable": True},
+        # }).classes('w-full max-w-2xl')
