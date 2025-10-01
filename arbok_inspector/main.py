@@ -11,8 +11,7 @@ if __name__ in {'__main__', '__mp_main__'}:
     ui.run(
         title='Arbok Inspector',
         favicon='🐍',
-        dark=None,
+        dark=True,
         show=True,
-        port=8080
+        port=8090
     )
-
