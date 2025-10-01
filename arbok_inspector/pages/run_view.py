@@ -54,11 +54,25 @@ class Run:
         self.full_data_set = load_by_id(run_id).to_xarray_dataset()
         self.full_sub_set = None
         self.dims = [Dim(name) for name in self.full_data_set.dims]
+        self.together_sweeps = False
         self.dim_axis_option = self.set_dim_axis_option()
+        self.sweep_dict = self.load_sweep_dict()
 
         self.subset_dims = {name: None for name in self.full_data_set.dims}
         self.plot_selection = []
         self.plots_per_column = 2
+
+    def load_sweep_dict(self):
+        """
+        Load the sweep dictionary from the dataset
+        TODO: check metadata for sweep information!
+        Returns:
+            sweep_dict (dict): Dictionary with sweep information
+            is_together (bool): True if all sweeps are together, False otherwise
+        """
+        self.sweep_dict = {i: [dim, dim] for i, dim in enumerate(self.dims)}
+        self.together_sweeps = True
+        return self.sweep_dict
 
     def set_dim_axis_option(self):
         """
@@ -102,8 +116,9 @@ class Run:
         ui.notify(text, position='top-right')
 
         ### First, remove old option this dim was on
-        if dim.option in ['average', 'select_value']:
-            self.dim_axis_option[dim.option].remove(dim)
+        for option in ['average', 'select_value']:
+            if dim in self.dim_axis_option[option]:
+                self.dim_axis_option[option].remove(dim)
         if dim.option in ['x-axis', 'y-axis']:
             self.dim_axis_option[dim.option] = None
 
@@ -112,17 +127,17 @@ class Run:
             # dim.ui_selecter.value = selection
             dim.select_index = index
             self.dim_axis_option[selection].append(dim)
-
         if selection in ['x-axis', 'y-axis']:
             old_dim = self.dim_axis_option[selection]
             self.dim_axis_option[selection] = dim
             if old_dim is not None:
+                # Set previous dim (having this option) to 'select_value'
+                # Required since x and y axis ahve to be unique
                 print(f"Updating {old_dim.name} to {dim.name} on {selection}")
                 if old_dim.option in ['x-axis', 'y-axis']:
                     self.dim_axis_option['select_value'].append(old_dim)
                     old_dim.option = 'select_value'
                     old_dim.ui_selecter.value = 'select_value'
-                    # old_dim.ui_selecter.update()
                     self.update_subset_dims(old_dim, 'select_value', old_dim.select_index)
         dim.ui_selecter.update()
 
@@ -157,20 +172,15 @@ async def run_page(run_id: str):
     ui.label(f'Run Page for ID: {run_id}').classes('text-2xl font-bold mb-6')
 
     with ui.column().classes('w-full'):
-        with ui.expansion('xarray summary', icon='expand_more', value=False).classes(
-            f'w-full {expansion_borders} gap-4 no-wrap items-start'):
-            # with ui.column().classes('light bg-gray-900 text-white p-4 rounded'):
-            display_xarray_html(run)
-
-        with ui.expansion('Coordinates and results', icon='expand_more', value=True).classes(
+        with ui.expansion('Coordinates and results', icon='checklist', value=True).classes(
             f'w-full {expansion_borders} gap-4 no-wrap items-start'):
             with ui.row().classes('w-full gap-6 no-wrap items-start'):
-                with ui.column().classes('w-1/2 gap-2'):
+                with ui.column().classes('w-2/3 gap-2'):
                     ui.label("Coordinates:").classes('text-lg font-semibold')
-                    for dim in run.dims:
-                        add_dim_dropdown(dim, run)
+                    for _, dims in run.sweep_dict.items():
+                        add_dim_dropdown(dims, run)
 
-                with ui.column().classes('w-1/2 gap-4'):
+                with ui.column().classes('w-1/3 gap-2'):
                     ui.label("Results:").classes('text-lg font-semibold')
                     row_data = [{'name': result.replace("__", ".")} for result in run.full_data_set]
                     for i, result in enumerate(run.full_data_set):
@@ -184,11 +194,10 @@ async def run_page(run_id: str):
                             text = result.replace("__", "."),
                             value = value,
                             on_change = lambda e, r=result: run.update_plot_selection(e.value, r),
-                        ).classes('text-sm h-4')
-
+                        ).classes('text-sm h-4').props('color=purple')
         with ui.expansion(
             'Plots',
-            icon='expand_more', value=True).classes(
+            icon='stacked_line_chart', value=True).classes(
                 f'w-full {expansion_borders} gap-4 no-wrap items-start'):
             
             with ui.row().classes('w-full p-4'):
@@ -213,17 +222,25 @@ async def run_page(run_id: str):
                 ).classes('mr-auto')
             plot_container_ref['value'] = ui.row().classes('w-full p-4')
             build_xarray_grid(run, plot_container_ref['value'])
+        with ui.expansion('xarray summary', icon='summarize', value=False).classes(
+            f'w-full {expansion_borders} gap-4 no-wrap items-start'):
+            display_xarray_html(run)
 
-def add_dim_dropdown(dim: Dim, run: Run):
+def add_dim_dropdown(dims: list[Dim], run: Run):
     placeholder = {"value": None}
+    width = 'w-1/2' if run.together_sweeps else 'w-full'
+    dim = dims[0]
     with ui.row().classes('w-full gap-2 no-wrap items-center'):
         ui_element = ui.select(
             options = axis_options,
             value = str(dim.option),
             label = f'{dim.name.replace("__", ".")}',
             on_change = lambda e: update_dim_selection(run, dim, e.value, placeholder["value"])
-        ).classes('w-full')
+        ).classes(width)
         dim.ui_selecter = ui_element
+        if run.together_sweeps:
+            ui.radio([d.name for d in dims], value=dim.name).classes(
+                width).props('dense')
     placeholder["value"] = ui.column().classes('w-full')
 
 def update_dim_selection(run: Run, dim: Dim, value, placeholder):

@@ -51,23 +51,29 @@ def database_browser_page():
             with ui.column().classes('w-1/6  p-4'):
                 ui.label('Select a day!').classes('text-lg font-semibold mb')
                 ui.button('Reload', on_click=lambda: update_day_selecter(day_grid)).classes('mb-2')
-                day_grid = ui.aggrid({
-                    'defaultColDef': {'flex': 1},
-                    'columnDefs': day_grid_column_defs,
-                    'rowData': {},
-                    'rowSelection': 'multiple',
-                }).classes('max-h-40').on(
+                day_grid = ui.aggrid(
+                    {
+                        'defaultColDef': {'flex': 1},
+                        'columnDefs': day_grid_column_defs,
+                        'rowData': {},
+                        'rowSelection': 'multiple',
+                    },
+                    theme = 'ag-theme-balham-dark'
+                    ).classes('ag-theme-alpine-dark max-h-40').on(
                     'cellClicked', lambda event: update_run_selecter(run_grid, event.args["value"], run_grid_column_defs))
                 update_day_selecter(day_grid)
 
             with ui.column().classes('w-1/2 p-4'):
                 ui.label('Select a run from the db! ---------------------------------').classes('text-lg font-semibold mb-2')
-                run_grid = ui.aggrid({
-                    'defaultColDef': {'flex': 1},
-                    'columnDefs': run_grid_column_defs,
-                    'rowData': {},
-                    'rowSelection': 'multiple',
-                }).classes('max-h-40').on(
+                run_grid = ui.aggrid(
+                    {
+                        'defaultColDef': {'flex': 1},
+                        'columnDefs': run_grid_column_defs,
+                        'rowData': {},
+                        'rowSelection': 'multiple',
+                    },
+                    theme = 'ag-theme-balham-dark'
+                ).classes('ag-theme-balham-dark max-h-40').on(
                     'cellClicked',
                     lambda event: open_run_page(event.args['data']['run_id'])
                 )
