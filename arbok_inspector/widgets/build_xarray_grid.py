@@ -31,11 +31,12 @@ def create_1d_plot(run, ds, container):
     title = ''
     for dim in run.dim_axis_option['select_value']:
         title += f"{dim.name } = {unit_formatter(run, dim, dim.select_index)}<br>"
+    x_dim_list = x_dim.split('__')
     fig.update_layout(
         template = 'plotly_dark',
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=40),
-        xaxis_title=x_dim.replace("__", ".") + f" ({da.coords[x_dim].unit})",
+        xaxis_title=f"{'.'.join(x_dim_list[:-1])}.<b>{x_dim_list[-1]}</b>  ({da.coords[x_dim].unit})",
         title=dict(
             text=title,
             x=0.5,
@@ -92,12 +93,14 @@ def create_2d_grid(run, ds, container):
                 showscale=True,
             )
         )
+        x_dim_list = x_dim.split('__')
+        y_dim_list = y_dim.split('__')
         fig.update_layout(
             template = 'plotly_dark',
             autosize=True,
             margin=dict(l=40, r=40, t=40, b=40),
-            xaxis_title=x_dim.replace("__", ".") + f" ({da.coords[x_dim].unit})",
-            yaxis_title=y_dim.replace("__", ".") + f" ({da.coords[y_dim].unit})",
+            xaxis_title=f"{'.'.join(x_dim_list[:-1])}.<b>{x_dim_list[-1]}</b>  ({da.coords[x_dim].unit})",
+            yaxis_title=f"{'.'.join(y_dim_list[:-1])}.<b>{y_dim_list[-1]}</b>  ({da.coords[y_dim].unit})",
             title=dict(
                 text=pretty_keys[plot_idx],
                 x=0.5,
