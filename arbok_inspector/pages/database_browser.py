@@ -32,7 +32,7 @@ def database_browser_page():
 
     with ui.column().classes('w-full'):
 
-        with ui.row().classes('flex max-w-2xl mx-auto mt-8 p-4'): #'w-full max-w-2xl mx-auto mt-8 p-4'):
+        with ui.row().classes('w-full items-center justify-between'):
             ui.label('Arbok Inspector').classes('text-3xl font-bold mb-6')
             
             with ui.card().classes('w-full p-6'):
@@ -47,8 +47,8 @@ def database_browser_page():
                         on_click=lambda: ui.navigate.to('/'),
                         color='purple').classes('mt-4')
 
-        with ui.row().classes('flex'):
-            with ui.column().classes('flex bg-blue-100 p-4'):
+        with ui.row().classes('w-full'):
+            with ui.column().classes('w-1/6  p-4'):
                 ui.label('Select a day!').classes('text-lg font-semibold mb')
                 ui.button('Reload', on_click=lambda: update_day_selecter(day_grid)).classes('mb-2')
                 day_grid = ui.aggrid({
@@ -60,7 +60,7 @@ def database_browser_page():
                     'cellClicked', lambda event: update_run_selecter(run_grid, event.args["value"], run_grid_column_defs))
                 update_day_selecter(day_grid)
 
-            with ui.column().classes('flex bg-blue-100 p-4'):
+            with ui.column().classes('w-1/2 p-4'):
                 ui.label('Select a run from the db! ---------------------------------').classes('text-lg font-semibold mb-2')
                 run_grid = ui.aggrid({
                     'defaultColDef': {'flex': 1},
