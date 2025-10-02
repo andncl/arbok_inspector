@@ -2,11 +2,13 @@
 import math
 import copy
 import plotly.graph_objects as go
-from nicegui import ui
+from nicegui import ui, app
 
 from arbok_inspector.helpers.unit_formater import unit_formatter
-
-def build_xarray_grid(run, container):
+from arbok_inspector.helpers.string_formaters import (
+    title_formater, axis_label_formater
+)
+def build_xarray_grid(run):
     """
     Build a grid of xarray plots for the given run.
     
@@ -14,6 +16,8 @@ def build_xarray_grid(run, container):
         run: The Run object containing the data to plot.
         container: The NiceGUI container to hold the plots.
     """
+    #client = await ui.context.client.connected()
+    container = app.storage.tab["placeholders"]['plots']
     container.clear()
     ds = run.generate_subset()
     print(f"Found {len(ds.dims)} dimensions to plot in subset:")
@@ -49,17 +53,13 @@ def create_1d_plot(run, ds, container):
                 name=key.replace("__", "."),
             )
         )
-    title = ''
-    for dim in run.dim_axis_option['select_value']:
-        title += f"{dim.name } = {unit_formatter(run, dim, dim.select_index)}<br>"
-    x_dim_list = x_dim.split('__')
     fig.update_layout(
         template = 'plotly_dark',
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=40),
-        xaxis_title=f"{'.'.join(x_dim_list[:-1])}.<b>{x_dim_list[-1]}</b>  ({da.coords[x_dim].unit})",
+        xaxis_title=axis_label_formater(da, x_dim),
         title=dict(
-            text=title,
+            text=title_formater(run),
             x=0.5,
             xanchor='center',
             yanchor = 'bottom',
@@ -123,20 +123,40 @@ def create_2d_grid(run, ds, container):
                 showscale=True,
             )
         )
-        x_dim_list = x_dim.split('__')
-        y_dim_list = y_dim.split('__')
         fig.update_layout(
             template = 'plotly_dark',
             autosize=True,
             margin=dict(l=40, r=40, t=40, b=40),
-            xaxis_title=f"{'.'.join(x_dim_list[:-1])}.<b>{x_dim_list[-1]}</b>  ({da.coords[x_dim].unit})",
-            yaxis_title=f"{'.'.join(y_dim_list[:-1])}.<b>{y_dim_list[-1]}</b>  ({da.coords[y_dim].unit})",
+            xaxis = dict(
+                title = dict(
+                    text = axis_label_formater(da, x_dim),
+                    font = dict(size=12)
+                ),
+                tickfont=dict(size=12),
+                showgrid=True,
+                gridcolor='white',
+                gridwidth=2,
+                tickmode='linear',
+                dtick=1000,
+                # gridcolor='lightgray',
+                # gridwidth=1,
+                # zeroline=True,
+                # zerolinecolor='gray',
+            ),
+            yaxis = dict(
+                title = dict(
+                    text=axis_label_formater(da, y_dim),
+                    font = dict(size=12)
+                ),
+                tickfont=dict(size=12),
+                showgrid=True
+            ),
             title=dict(
-                text=pretty_keys[plot_idx],
+                text=f'<b>{pretty_keys[plot_idx]}</b><br>'+ title_formater(run),
                 x=0.5,
                 xanchor='center',
                 yanchor = 'bottom',
-                font = dict(size=16)
+                font = dict(size=12),
                 ),
         )
         return fig
