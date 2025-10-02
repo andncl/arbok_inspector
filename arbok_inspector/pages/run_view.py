@@ -93,7 +93,7 @@ class Run:
         else:
             dims = self.full_data_set.dims
             self.parallel_sweep_axes = {i: [dim] for i, dim in enumerate(dims)}
-            self.together_sweeps = True
+            self.together_sweeps = False
         self.sweep_dict = {
             i: Dim(names[0]) for i, names in self.parallel_sweep_axes.items()
             }
@@ -137,6 +137,15 @@ class Run:
         return options
 
     def update_subset_dims(self, dim: Dim, selection: str, index = None):
+        """
+        Update the subset dimensions based on user selection.
+
+        Args:
+            dim (Dim): The dimension object to update
+            selection (str): The new selection option
+                ('average', 'select_value', 'x-axis', 'y-axis')
+            index (int, optional): The index for 'select_value' option. Defaults to None.
+        """
         text = f'Updating subset dims: {dim.name} to {selection}'
         print(text)
         ui.notify(text, position='top-right')
@@ -168,6 +177,11 @@ class Run:
         dim.ui_selecter.update()
 
     def generate_subset(self):
+        """
+        Generate the subset of the full dataset based on the current dimension options.
+        Returns:
+            sub_set (xarray.Dataset): The subset of the full dataset
+        """
         # TODO: take the averaging out of this! We only want to average if necessary
         # averaging can be computationally intensive!
         sub_set = self.full_data_set
@@ -178,16 +192,29 @@ class Run:
         return sub_set
 
     def update_plot_selection(self, value: bool, readout_name: str):
+        """
+        Update the plot selection based on user interaction.
+
+        Args:
+            value (bool): True if the result is selected, False otherwise
+            readout_name (str): Name of the result to update
+        """
         print(f"{readout_name= } {value= }")
         pretty_readout_name = readout_name.replace("__", ".")
         if readout_name not in self.plot_selection:
             self.plot_selection.append(readout_name)
-            ui.notify(f'Result {pretty_readout_name} added to plot selection', position='top-right')
+            ui.notify(
+                message=f'Result {pretty_readout_name} added to plot selection',
+                position='top-right'
+                )
         else:
             self.plot_selection.remove(readout_name)
-            ui.notify(f'Result {pretty_readout_name} removed from plot selection', position='top-right')
+            ui.notify(
+                f'Result {pretty_readout_name} removed from plot selection',
+                position='top-right'
+            )
         print(f"{self.plot_selection= }")
-        build_xarray_grid(self, placeholders["plots"])
+        build_xarray_grid(self)
 
 expansion_borders = 'border border-gray-400 rounded-lg'
 
@@ -199,11 +226,10 @@ async def run_page(run_id: str):
     Args:
         run_id (str): ID of the run to display
     """
-    
-    
+    client = await ui.context.client.connected()
     run = Run(int(run_id))
-    # app.storage.user["placeholders"] = placeholders
-    # app.storage.user["run"] = run
+    app.storage.tab["placeholders"] = placeholders
+    app.storage.tab["run"] = run
 
     ui.label(f'Run Page for ID: {run_id}').classes('text-2xl font-bold mb-6')
     with ui.column().classes('w-full'):
@@ -213,7 +239,7 @@ async def run_page(run_id: str):
                 with ui.column().classes('w-2/3 gap-2'):
                     ui.label("Coordinates:").classes('text-lg font-semibold')
                     for i, _ in run.parallel_sweep_axes.items():
-                        add_dim_dropdown(sweep_idx = i, run = run)
+                        add_dim_dropdown(sweep_idx = i)
                 with ui.column().classes('w-1/3 gap-2'):
                     ui.label("Results:").classes('text-lg font-semibold')
                     for i, result in enumerate(run.full_data_set):
@@ -237,14 +263,13 @@ async def run_page(run_id: str):
                     text = 'Update plots',
                     icon = 'refresh',
                     color='green',
-                    on_click=lambda: build_xarray_grid(
-                        run, placeholders["plots"]),
+                    on_click=lambda: build_xarray_grid(run),
                 ).classes('ml-auto')
                 ui.number(
                     label = '# plots per column',
                     value = 2,
                     format = '%.0f',
-                    on_change = lambda e: set_plots_per_column(e.value, run)
+                    on_change = lambda e: set_plots_per_column(e.value)
                 ).classes('mx-auto')
                 ui.button(
                     text = 'Show dims',
@@ -252,24 +277,24 @@ async def run_page(run_id: str):
                     on_click=lambda: print_debug(run),
                     color = 'red'
                 ).classes('mr-auto')
-            placeholders["plots"] = ui.row().classes('w-full p-4')
-            build_xarray_grid(run, placeholders["plots"])
+            app.storage.tab["placeholders"]["plots"] = ui.row().classes('w-full p-4')
+            build_xarray_grid(run)
         with ui.expansion('xarray summary', icon='summarize', value=False).classes(
             f'w-full {expansion_borders} gap-4 no-wrap items-start'):
-            display_xarray_html(run)
+            display_xarray_html()
         with ui.expansion('analysis', icon='science', value=False).classes(
             f'w-full {expansion_borders} gap-4 no-wrap items-start'):
             with ui.row():
-                pass
+                ui.label("Working on it!  -Andi").classes('text-lg font-semibold')
 
-def add_dim_dropdown(sweep_idx: int, run: Run):
+def add_dim_dropdown(sweep_idx: int):
     """
     Add a dropdown to select the dimension option for a given sweep index.
 
     Args:
         sweep_idx (int): Index of the sweep to add the dropdown for
-        run (Run): The current run object
     """
+    run = app.storage.tab["run"]
     width = 'w-1/2' if run.together_sweeps else 'w-full'
     dim = run.sweep_dict[sweep_idx]
     local_placeholder = {"slider": None}
@@ -278,7 +303,7 @@ def add_dim_dropdown(sweep_idx: int, run: Run):
             options = axis_options,
             value = str(dim.option),
             label = f'{dim.name.replace("__", ".")}',
-            on_change = lambda e: update_dim_selection(run, dim, e.value, local_placeholder["slider"])
+            on_change = lambda e: update_dim_selection(dim, e.value, local_placeholder["slider"])
         ).classes(width)
         dim.ui_selecter = ui_element
         if run.together_sweeps:
@@ -286,79 +311,88 @@ def add_dim_dropdown(sweep_idx: int, run: Run):
             ui.radio(
                 options = dims_names,
                 value=dim.name,
-                on_change = lambda e: update_sweep_dim_name(run, dim, e.value, placeholders["plots"])
+                on_change = lambda e: update_sweep_dim_name(dim, e.value)
                 ).classes(width).props('dense')
     local_placeholder["slider"] = ui.column().classes('w-full')
 
-def update_dim_selection(run: Run, dim: Dim, value, placeholder):
+def update_dim_selection(dim: Dim, value: str, slider_placeholder):
     """
     Update the dimension/sweep selection and rebuild the plot grid.
 
     Args:
-        run (Run): The current run object
         dim (Dim): The dimension object to update
         value (str): The new selection value
-        placeholder: The UI placeholder to update
+        slider_placeholder: The UI placeholder to update
     """
-    placeholder.clear()
+    run = app.storage.tab["run"]
+    slider_placeholder.clear()
     print(value)
     if value == 'average':
         run.update_subset_dims(dim, 'average')
         dim.option = 'average'
     if value == 'select_value':
         dim_size = run.full_data_set.sizes[dim.name]
-        with placeholder:
+        with slider_placeholder:
             slider = ui.slider(
                 min=0, max=dim_size - 1, step=1, value=0,
-                on_change=lambda e: run.update_subset_dims(dim, 'select_value', e.value)
-            ).classes('w-full h-4')
+                on_change=lambda e: run.update_subset_dims(dim, 'select_value', e.value),
+                ).classes('w-full h-4')\
+                .props('color="purple" markers label-always')
             label = ui.label('').classes('ml-4')
-            update_value_from_dim_slider(label, slider, run, dim)
+            update_value_from_dim_slider(label, slider, dim)
             slider.on(
                 'update:model-value',
-                lambda e: update_value_from_dim_slider(label, slider, run, dim),
+                lambda e: update_value_from_dim_slider(label, slider, dim),
                 throttle=0.2, leading_events=False)
         run.update_subset_dims(dim, 'select_value', 0)
     else:
         run.update_subset_dims(dim, value)
         dim.option = value
-    build_xarray_grid(run, placeholders["plots"])
+    build_xarray_grid(run)
 
-def update_value_from_dim_slider(label, slider, run: Run, dim: Dim):
+def update_value_from_dim_slider(label, slider, dim: Dim):
     """
     Update the label next to the slider with the current value and unit.
     
     Args:
         label: The UI label to update
         slider: The UI slider to get the value from
-        run (Run): The current run object
         dim (Dim): The dimension object
     """
-    label_txt = f'Value: {unit_formatter(run, dim, slider.value)}'
-    label.text = label_txt
-    build_xarray_grid(run, placeholders["plots"])
+    run = app.storage.tab["run"]
+    # label_txt = f'Value: {unit_formatter(run, dim, slider.value)}'
+    # label.text = label_txt
+    build_xarray_grid(run)
 
-def set_plots_per_column(value: int, run: Run):
+def set_plots_per_column(value: int):
     """
     Set the number of plots to display per column.
 
     Args:
         value (int): The number of plots per column
-        run (Run): The current run object
     """
+    run = app.storage.tab["run"]
     ui.notify(f'Setting plots per column to {value}', position='top-right')
     run.plots_per_column = int(value)
-    build_xarray_grid(run, placeholders["plots"])
+    build_xarray_grid(run)
 
 
-def update_sweep_dim_name(run: Run, dim: Dim, new_name: str, placeholder):
-    """Update the name of the dimension in the sweep dict and the dim object."""
+def update_sweep_dim_name(dim: Dim, new_name: str):
+    """
+    Update the name of the dimension in the sweep dict and the dim object.
+    
+    Args:
+        dim (Dim): The dimension object to update
+        new_name (str): The new name for the dimension
+    """
+    run = app.storage.tab["run"]
     dim.name = new_name
     dim.ui_selecter.label = new_name.replace("__", ".")
-    build_xarray_grid(run, placeholder)
+    build_xarray_grid(run)
 
-def display_xarray_html(run):
+def display_xarray_html():
     """Display the xarray dataset in a dark-themed style."""
+    run = app.storage.tab["run"]
     ds = run.full_data_set
     with ui.column().classes('w-full'):
         ui.html('''
