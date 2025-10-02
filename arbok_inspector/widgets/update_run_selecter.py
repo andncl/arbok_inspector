@@ -3,8 +3,6 @@ from nicegui import ui
 
 from arbok_inspector.state import inspector
 
-
-
 def update_run_selecter(run_grid, run_timestamp, run_grid_column_defs):
     inspector.cursor.execute("""
         SELECT *
