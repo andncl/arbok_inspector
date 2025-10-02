@@ -23,35 +23,38 @@ run_param_dict = {
     'run_timestamp': 'Started',
     'completed_timestamp': 'Completed',
 }
+grids = {'day': None, 'run': None}
 
 @ui.page('/browser')
 def database_browser_page():
     """Database browser page showing the selected database"""
-    ui.add_head_html('<title>Arbok Inspector - Database Browser</title>')
-
-
-    with ui.column().classes('w-full'):
-
+    with ui.column().classes('w-full h-screen'):
+        ui.add_head_html('<title>Arbok Inspector - Database Browser</title>')
         with ui.row().classes('w-full items-center justify-between'):
             ui.label('Arbok Inspector').classes('text-3xl font-bold mb-6')
             
-            with ui.card().classes('w-full p-6'):
+            with ui.card().classes('w-full p-2'):
                 ui.label('Database Information').classes('text-xl font-semibold mb-4')
                 if inspector.database_path:
-                    ui.label(f'Database Path: {str(inspector.database_path)}').classes('text-lg')
+                    ui.label(f'Database Path: {str(inspector.database_path)}').classes()
                 else:
                     ui.label('No database selected').classes('text-lg text-red-500')
                 
                 # Button to select a new database
-                ui.button('Select New Database', 
+                with ui.row().classes('w-full justify-start'):
+                    ui.button(
+                        text = 'Select New Database',
                         on_click=lambda: ui.navigate.to('/'),
-                        color='purple').classes('mt-4')
+                        color='purple').classes()
+                    ui.button(
+                        text = 'Reload',
+                        on_click=lambda: update_day_selecter(grids['day'])
+                        ).classes()
 
-        with ui.row().classes('w-full'):
-            with ui.column().classes('w-1/6  p-4'):
-                ui.label('Select a day!').classes('text-lg font-semibold mb')
-                ui.button('Reload', on_click=lambda: update_day_selecter(day_grid)).classes('mb-2')
-                day_grid = ui.aggrid(
+        with ui.row().classes('w-full flex-1'):
+            min_height = 'min-height: 600px;'
+            with ui.column().style('width: 100px;').classes('h-full'):
+                grids['day'] = ui.aggrid(
                     {
                         'defaultColDef': {'flex': 1},
                         'columnDefs': day_grid_column_defs,
@@ -59,21 +62,25 @@ def database_browser_page():
                         'rowSelection': 'multiple',
                     },
                     theme = 'ag-theme-balham-dark'
-                    ).classes('ag-theme-alpine-dark max-h-40').on(
-                    'cellClicked', lambda event: update_run_selecter(run_grid, event.args["value"], run_grid_column_defs))
-                update_day_selecter(day_grid)
-
-            with ui.column().classes('w-1/2 p-4'):
-                ui.label('Select a run from the db! ---------------------------------').classes('text-lg font-semibold mb-2')
-                run_grid = ui.aggrid(
+                ).classes('text-sm ag-theme-balham-dark').style(
+                    #min_height
+                ).on(
+                    type = 'cellClicked',
+                    handler = lambda event: update_run_selecter(grids['run'], event.args["value"], run_grid_column_defs)
+                )
+                update_day_selecter(grids['day'])
+            with ui.column().classes('flex-1').classes('h-full'):
+                grids['run'] = ui.aggrid(
                     {
                         'defaultColDef': {'flex': 1},
                         'columnDefs': run_grid_column_defs,
                         'rowData': {},
                         'rowSelection': 'multiple',
                     },
-                    theme = 'ag-theme-balham-dark'
-                ).classes('ag-theme-balham-dark max-h-40').on(
+                    #theme = 'ag-theme-balham-dark'
+                ).classes('ag-theme-balham-dark').style(
+                    #min_height
+                ).on(
                     'cellClicked',
                     lambda event: open_run_page(event.args['data']['run_id'])
                 )

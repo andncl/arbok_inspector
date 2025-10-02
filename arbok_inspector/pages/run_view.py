@@ -22,9 +22,12 @@ axis_options = ['average', 'select_value', 'y-axis', 'x-axis']
 plot_container_ref = {'value': None}
 
 class Dim:
+    """
+    Class representing a dimension of the data
+    """
     def __init__(self, name):
         """
-        Class representing a dimension of the data
+       Constructor for Dim class
         
         Args:
             name (str): Name of the dimension
@@ -48,7 +51,12 @@ class Run:
     Class representing a run with its data and methods
     """
     def __init__(self, run_id: int):
-        """Constructor for Run class"""
+        """
+        Constructor for Run class
+        
+        Args:
+            run_id (int): ID of the run
+        """
         self.run_id = run_id
         self.title = f'Run ID: {run_id}  (-> add experiment)'
         self.full_data_set = load_by_id(run_id).to_xarray_dataset()
@@ -170,7 +178,6 @@ async def run_page(run_id: str):
     run = Run(int(run_id))
 
     ui.label(f'Run Page for ID: {run_id}').classes('text-2xl font-bold mb-6')
-
     with ui.column().classes('w-full'):
         with ui.expansion('Coordinates and results', icon='checklist', value=True).classes(
             f'w-full {expansion_borders} gap-4 no-wrap items-start'):
@@ -225,6 +232,10 @@ async def run_page(run_id: str):
         with ui.expansion('xarray summary', icon='summarize', value=False).classes(
             f'w-full {expansion_borders} gap-4 no-wrap items-start'):
             display_xarray_html(run)
+        with ui.expansion('analysis', icon='science', value=False).classes(
+            f'w-full {expansion_borders} gap-4 no-wrap items-start'):
+            with ui.row():
+                pass
 
 def add_dim_dropdown(dims: list[Dim], run: Run):
     placeholder = {"value": None}
