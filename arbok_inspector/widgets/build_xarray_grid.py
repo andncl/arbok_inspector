@@ -7,6 +7,13 @@ from nicegui import ui
 from arbok_inspector.helpers.unit_formater import unit_formatter
 
 def build_xarray_grid(run, container):
+    """
+    Build a grid of xarray plots for the given run.
+    
+    Args:
+        run: The Run object containing the data to plot.
+        container: The NiceGUI container to hold the plots.
+    """
     container.clear()
     ds = run.generate_subset()
     print(f"Found {len(ds.dims)} dimensions to plot in subset:")
@@ -14,8 +21,22 @@ def build_xarray_grid(run, container):
         create_1d_plot(run, ds, container)
     elif len(ds.dims) == 2:
         create_2d_grid(run, ds, container)
+    else:
+        ui.notify(
+            'The selected dimensions result in more than 2D data.<br>'
+            'Please select only 1 or 2 dimensions to plot)',
+            color = 'red')
 
 def create_1d_plot(run, ds, container):
+    """
+    Create a 1D plot for the given run and dataset.
+
+    Args:
+        run: The Run object containing the data to plot.
+        ds: The xarray Dataset containing the data.
+        container: The NiceGUI container to hold the plot.
+    """
+    print("Creating 1D plot")
     fig = go.Figure()
     x_dim = run.dim_axis_option['x-axis'].name
     for key in run.plot_selection:
@@ -58,6 +79,15 @@ def create_1d_plot(run, ds, container):
         ui.plotly(fig).classes('w-full').style('min-height: 400px;')
 
 def create_2d_grid(run, ds, container):
+    """
+    Create a grid of 2D plots for the given run and dataset.
+
+    Args:
+        run: The Run object containing the data to plot.
+        ds: The xarray Dataset containing the data.
+        container: The NiceGUI container to hold the plots.
+    """
+    print("Creating 2D grid of plots")
     if not all([run.dim_axis_option[axis]is not None for axis in ['x-axis', 'y-axis']]):
         ui.notify(
             'Please select both x-axis and y-axis dimensions to display 2D plots.<br>'
@@ -74,7 +104,7 @@ def create_2d_grid(run, ds, container):
     x_dim = run.dim_axis_option['x-axis'].name
     y_dim = run.dim_axis_option['y-axis'].name
     plot_idx = 0
-    def create_2d_plot(row, col, plot_idx):
+    def create_2d_plot(plot_idx):
         key = keys[plot_idx]
         da = ds[key]
         if x_dim != da.dims[1]:
@@ -118,7 +148,7 @@ def create_2d_grid(run, ds, container):
                     for col in range(num_columns):
                         if plot_idx >= num_plots:
                             break
-                        fig = create_2d_plot(row, col, plot_idx)
+                        fig = create_2d_plot(plot_idx)
                         width_percent = 100 / num_columns - 2
                         with ui.column().style(
                             f"width: {width_percent}%; box-sizing: border-box;"
