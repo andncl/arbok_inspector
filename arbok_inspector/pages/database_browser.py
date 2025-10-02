@@ -8,12 +8,14 @@ day_grid_column_defs = [
     {'headerName': 'Day', 'field': 'day'},
 ]
 
+small_col_width = 30
 run_grid_column_defs = [
-    {'headerName': 'Run ID', 'field': 'run_id'},
-    {'headerName': 'Experiment ID', 'field': 'exp_id'},
-    {'headerName': '# Results', 'field': 'result_counter'},
-    {'headerName': 'Started', 'field': 'run_timestamp'},
-    {'headerName': 'Completed', 'field': 'completed_timestamp'},
+    {'headerName': 'Run ID', 'field': 'run_id', "width": small_col_width},
+    {'headerName': 'Name', 'field': 'name'},
+    {'headerName': 'Exp ID', 'field': 'exp_id', "width": small_col_width},
+    {'headerName': '# Results', 'field': 'result_counter', "width": small_col_width},
+    {'headerName': 'Started', 'field': 'run_timestamp', "width": small_col_width},
+    {'headerName': 'Finish', 'field': 'completed_timestamp', "width": small_col_width},
 ]
 
 run_param_dict = {
@@ -52,8 +54,7 @@ def database_browser_page():
                         ).classes()
 
         with ui.row().classes('w-full flex-1'):
-            min_height = 'min-height: 600px;'
-            with ui.column().style('width: 100px;').classes('h-full'):
+            with ui.column().style('width: 120px;').classes('h-full'):
                 grids['day'] = ui.aggrid(
                     {
                         'defaultColDef': {'flex': 1},

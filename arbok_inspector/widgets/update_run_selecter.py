@@ -26,7 +26,7 @@ def update_run_selecter(run_grid, run_timestamp, run_grid_column_defs):
                 if 'time' in key:
                     value = datetime.utcfromtimestamp(value).strftime('%H:%M:%S') if value is not None else 'N/A'
                 run_dict[key] = value
-        run_grid_rows.append(run_dict)
+        run_grid_rows.insert(0, run_dict)
 
     run_grid.options['rowData'] = run_grid_rows
     run_grid.update()
