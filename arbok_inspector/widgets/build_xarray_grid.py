@@ -19,6 +19,11 @@ def build_xarray_grid(run):
     #client = await ui.context.client.connected()
     container = app.storage.tab["placeholders"]['plots']
     container.clear()
+    if run.dim_axis_option['x-axis'] is None:
+        ui.notify(
+            'Please select at least one dimension for the x-axis to display plots.<br>',
+            color = 'red')
+        return
     ds = run.generate_subset()
     print(f"Found {len(ds.dims)} dimensions to plot in subset:")
     if len(ds.dims) == 1:
