@@ -1,15 +1,15 @@
-from nicegui import ui
+from nicegui import ui, app
 from arbok_inspector.state import inspector
 from arbok_inspector.pages.run_view import run_page
 from arbok_inspector.widgets.update_day_selecter import update_day_selecter
 from arbok_inspector.widgets.update_run_selecter import update_run_selecter
 
-day_grid_column_defs = [
+DAY_GRID_COLUMN_DEFS = [
     {'headerName': 'Day', 'field': 'day'},
 ]
 
 small_col_width = 30
-run_grid_column_defs = [
+RUN_GRID_COLUMN_DEFS = [
     {'headerName': 'Run ID', 'field': 'run_id', "width": small_col_width},
     {'headerName': 'Name', 'field': 'name'},
     {'headerName': 'Exp ID', 'field': 'exp_id', "width": small_col_width},
@@ -17,19 +17,19 @@ run_grid_column_defs = [
     {'headerName': 'Started', 'field': 'run_timestamp', "width": small_col_width},
     {'headerName': 'Finish', 'field': 'completed_timestamp', "width": small_col_width},
 ]
-
-run_param_dict = {
+RUN_PARAM_DICT = {
     'run_id': 'Run ID',
     'exp_id': 'Experiment ID',
     'result_counter': '# results',
     'run_timestamp': 'Started',
     'completed_timestamp': 'Completed',
 }
-grids = {'day': None, 'run': None}
+AGGRID_STYLE = 'height: 95%; min-height: 0;'
 
 @ui.page('/browser')
 def database_browser_page():
     """Database browser page showing the selected database"""
+    grids = {'day': None, 'run': None}
     with ui.column().classes('w-full h-screen'):
         ui.add_head_html('<title>Arbok Inspector - Database Browser</title>')
         with ui.row().classes('w-full items-center justify-between'):
@@ -58,29 +58,30 @@ def database_browser_page():
                 grids['day'] = ui.aggrid(
                     {
                         'defaultColDef': {'flex': 1},
-                        'columnDefs': day_grid_column_defs,
+                        'columnDefs': DAY_GRID_COLUMN_DEFS,
                         'rowData': {},
                         'rowSelection': 'multiple',
                     },
-                    theme = 'ag-theme-balham-dark'
-                ).classes('text-sm ag-theme-balham-dark').style(
-                    #min_height
-                ).on(
-                    type = 'cellClicked',
-                    handler = lambda event: update_run_selecter(grids['run'], event.args["value"], run_grid_column_defs)
-                )
+                    theme = 'ag-theme-balham-dark')\
+                    .classes('text-sm ag-theme-balham-dark')\
+                    .style(AGGRID_STYLE)\
+                    .on(
+                        type = 'cellClicked',
+                        handler = lambda event: update_run_selecter(
+                            grids['run'], event.args["value"], RUN_GRID_COLUMN_DEFS)
+                    )
                 update_day_selecter(grids['day'])
             with ui.column().classes('flex-1').classes('h-full'):
                 grids['run'] = ui.aggrid(
                     {
                         'defaultColDef': {'flex': 1},
-                        'columnDefs': run_grid_column_defs,
+                        'columnDefs': RUN_GRID_COLUMN_DEFS,
                         'rowData': {},
                         'rowSelection': 'multiple',
                     },
                     #theme = 'ag-theme-balham-dark'
                 ).classes('ag-theme-balham-dark').style(
-                    #min_height
+                    AGGRID_STYLE
                 ).on(
                     'cellClicked',
                     lambda event: open_run_page(event.args['data']['run_id'])
