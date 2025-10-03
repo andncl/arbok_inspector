@@ -22,7 +22,7 @@ RUN_TABLE_COLUMNS = [
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
 #placeholders = {'plots': None}
 
-EXPANSION_CLASSES = 'w-full border p-1 border-gray-400 rounded-lg gap-1 no-wrap items-start'
+EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start'
 
 @ui.page('/run/{run_id}')
 async def run_page(run_id: str):
@@ -39,9 +39,9 @@ async def run_page(run_id: str):
     app.storage.tab["run"] = run
 
     ui.label(f'Run Page for ID: {run_id}').classes('text-2xl font-bold mb-6')
-    with ui.column().classes('w-full'):
+    with ui.column().classes('w-full gap-1'):
         with ui.expansion('Coordinates and results', icon='checklist', value=True)\
-            .classes(EXPANSION_CLASSES):
+            .classes(EXPANSION_CLASSES).props('expand-separator'):
             with ui.row().classes('w-full gap-4 no-wrap items-start'):
                 with ui.column().classes('w-2/3 gap-2'):
                     ui.label("Coordinates:").classes('text-lg font-semibold')
@@ -100,17 +100,17 @@ def add_dim_dropdown(sweep_idx: int):
         sweep_idx (int): Index of the sweep to add the dropdown for
     """
     run = app.storage.tab["run"]
-    width = 'w-1/2 text-xs' if run.together_sweeps else 'w-full'
+    width = 'w-1/2' if run.together_sweeps else 'w-full'
     dim = run.sweep_dict[sweep_idx]
     local_placeholder = {"slider": None}
-    with ui.row().classes('w-full no-wrap items-center'):
+    with ui.row().classes('w-full no-wrap items-center gap-1'):
         ui_element = ui.select(
             options = AXIS_OPTIONS,
             value = str(dim.option),
             label = f'{dim.name.replace("__", ".")}',
             on_change = lambda e: update_dim_selection(
                 dim, e.value, local_placeholder["slider"])
-        ).classes(width)
+        ).classes(f"{width} text-sm m-0 p-0").props('dense')
         dim.ui_selector = ui_element
         if run.together_sweeps:
             dims_names = run.parallel_sweep_axes[sweep_idx]
