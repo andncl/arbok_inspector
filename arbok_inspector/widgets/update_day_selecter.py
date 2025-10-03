@@ -17,6 +17,7 @@ def update_day_selecter(day_grid):
         GROUP BY day
         ORDER BY day;
     """)
+    day_grid.clear()
     rows = inspector.cursor.fetchall()
     row_data = []
     for day, ts in rows[::-1]:
