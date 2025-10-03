@@ -19,7 +19,7 @@ def unit_formatter(run, dim, index: int) -> str:
             for prefix, factor in unit_tuples:
                 if abs(value) >= factor or (abs(value) < 1e-3 and value != 0 and factor < 1):
                     scaled_value = value / factor
-                    return f'{scaled_value:.3f} {prefix}{unit}'
+                    return f'{scaled_value:.3f} {prefix}<b>{unit}</b>'
         if unit is None:
             return f'{value:.3f}'
         else:
