@@ -138,15 +138,6 @@ def create_2d_grid(run, ds, container):
                     font = dict(size=12)
                 ),
                 tickfont=dict(size=12),
-                showgrid=True,
-                gridcolor='white',
-                gridwidth=2,
-                tickmode='linear',
-                dtick=1000,
-                # gridcolor='lightgray',
-                # gridwidth=1,
-                # zeroline=True,
-                # zerolinecolor='gray',
             ),
             yaxis = dict(
                 title = dict(
@@ -154,7 +145,6 @@ def create_2d_grid(run, ds, container):
                     font = dict(size=12)
                 ),
                 tickfont=dict(size=12),
-                showgrid=True
             ),
             title=dict(
                 text=f'<b>{pretty_keys[plot_idx]}</b><br>'+ title_formater(run),
