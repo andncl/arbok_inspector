@@ -1,6 +1,9 @@
 """
 Run class representing a single run of the experiment.
 """
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 import json
 from qcodes.dataset import load_by_id
 from nicegui import ui
@@ -8,6 +11,9 @@ from nicegui import ui
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
 
+if TYPE_CHECKING:
+    from qcodes.dataset.data_set import DataSet
+    from xarray import Dataset
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
 
 class Run:
@@ -21,24 +27,21 @@ class Run:
         Args:
             run_id (int): ID of the run
         """
-        self.run_id = run_id
-        self.title = f'Run ID: {run_id}  (-> add experiment)'
-        self.dataset = load_by_id(run_id)
-        self.full_data_set = self.dataset.to_xarray_dataset()
-        self.full_sub_set = None
-        
-        self.together_sweeps = False
-        
-        self.parallel_sweep_axes = {}
-        self.sweep_dict = {}
-        self.load_sweep_dict()
-        self.dims = list(self.sweep_dict.values())
-        print(self.dims)
-        self.dim_axis_option = self.set_dim_axis_option()
+        self.run_id: int = run_id
+        self.title: str = f'Run ID: {run_id}  (-> add experiment)'
+        self.dataset: DataSet = load_by_id(run_id)
+        self.full_data_set: Dataset = self.dataset.to_xarray_dataset()
 
-        self.subset_dims = {name: None for name in self.full_data_set.dims}
-        self.plot_selection = []
-        self.plots_per_column = 2
+        self.together_sweeps: bool = False
+        self.parallel_sweep_axes: dict = {}
+        self.sweep_dict: dict[int, Dim] = {}
+        self.load_sweep_dict()
+        self.dims: list[Dim] = list(self.sweep_dict.values())
+        self.dim_axis_option: dict[str, str|list[Dim]] = self.set_dim_axis_option()
+        print(self.dims)
+
+        self.plot_selection: list[str] = []
+        self.plots_per_column: int = 2
 
     def load_sweep_dict(self):
         """

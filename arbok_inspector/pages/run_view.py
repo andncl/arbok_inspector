@@ -20,9 +20,9 @@ RUN_TABLE_COLUMNS = [
 ]
 
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
-placeholders = {'plots': None}
+#placeholders = {'plots': None}
 
-EXPANSION_BORDERS = 'border border-gray-400 rounded-lg'
+EXPANSION_CLASSES = 'w-full border p-1 border-gray-400 rounded-lg gap-1 no-wrap items-start'
 
 @ui.page('/run/{run_id}')
 async def run_page(run_id: str):
@@ -33,16 +33,16 @@ async def run_page(run_id: str):
         run_id (str): ID of the run to display
     """
     ui.page_title(f"{run_id}")
-    client = await ui.context.client.connected()
+    _ = await ui.context.client.connected()
     run = Run(int(run_id))
-    app.storage.tab["placeholders"] = placeholders
+    app.storage.tab["placeholders"] = {'plots': None}
     app.storage.tab["run"] = run
 
     ui.label(f'Run Page for ID: {run_id}').classes('text-2xl font-bold mb-6')
     with ui.column().classes('w-full'):
-        with ui.expansion('Coordinates and results', icon='checklist', value=True).classes(
-            f'w-full {EXPANSION_BORDERS} gap-4 no-wrap items-start'):
-            with ui.row().classes('w-full gap-6 no-wrap items-start'):
+        with ui.expansion('Coordinates and results', icon='checklist', value=True)\
+            .classes(EXPANSION_CLASSES):
+            with ui.row().classes('w-full gap-4 no-wrap items-start'):
                 with ui.column().classes('w-2/3 gap-2'):
                     ui.label("Coordinates:").classes('text-lg font-semibold')
                     for i, _ in run.parallel_sweep_axes.items():
@@ -61,36 +61,34 @@ async def run_page(run_id: str):
                             value = value,
                             on_change = lambda e, r=result: run.update_plot_selection(e.value, r),
                         ).classes('text-sm h-4').props('color=green')
-        with ui.expansion(
-            'Plots',
-            icon='stacked_line_chart', value=True).classes(
-                f'w-full {EXPANSION_BORDERS} gap-4 no-wrap items-start'):
-            with ui.row().classes('w-full p-4'):
+        with ui.expansion('Plots', icon='stacked_line_chart', value=True)\
+            .classes(EXPANSION_CLASSES):
+            with ui.row().classes('w-full p-4 items-center rounded-lg border border-neutral-600 bg-neutral-800'):
                 ui.button(
                     text = 'Update plots',
                     icon = 'refresh',
                     color='green',
                     on_click=lambda: build_xarray_grid(run),
-                ).classes('ml-auto')
-                ui.number(
-                    label = '# plots per column',
-                    value = 2,
-                    format = '%.0f',
-                    on_change = lambda e: set_plots_per_column(e.value)
-                ).classes('mx-auto')
+                ).classes('mr-4')
                 ui.button(
                     text = 'Show dims',
                     icon = 'info',
                     on_click=lambda: print_debug(run),
                     color = 'red'
-                ).classes('mr-auto')
+                ).classes('mx-4')
+                ui.number(
+                    label = '# plots per column',
+                    value = 2,
+                    format = '%.0f',
+                    on_change = lambda e: set_plots_per_column(e.value)
+                ).classes('ml-4 w-32 text-xs')
             app.storage.tab["placeholders"]["plots"] = ui.row().classes('w-full p-4')
             build_xarray_grid(run)
-        with ui.expansion('xarray summary', icon='summarize', value=False).classes(
-            f'w-full {EXPANSION_BORDERS} gap-4 no-wrap items-start'):
+        with ui.expansion('xarray summary', icon='summarize', value=False)\
+            .classes(EXPANSION_CLASSES):
             display_xarray_html()
-        with ui.expansion('analysis', icon='science', value=False).classes(
-            f'w-full {EXPANSION_BORDERS} gap-4 no-wrap items-start'):
+        with ui.expansion('analysis', icon='science', value=False)\
+            .classes(EXPANSION_CLASSES):
             with ui.row():
                 ui.label("Working on it!  -Andi").classes('text-lg font-semibold')
 
@@ -102,10 +100,10 @@ def add_dim_dropdown(sweep_idx: int):
         sweep_idx (int): Index of the sweep to add the dropdown for
     """
     run = app.storage.tab["run"]
-    width = 'w-1/2' if run.together_sweeps else 'w-full'
+    width = 'w-1/2 text-xs' if run.together_sweeps else 'w-full'
     dim = run.sweep_dict[sweep_idx]
     local_placeholder = {"slider": None}
-    with ui.row().classes('w-full gap-2 no-wrap items-center'):
+    with ui.row().classes('w-full no-wrap items-center'):
         ui_element = ui.select(
             options = AXIS_OPTIONS,
             value = str(dim.option),
