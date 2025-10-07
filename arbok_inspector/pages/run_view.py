@@ -1,10 +1,14 @@
 """Run view page showing the data and plots for a specific run"""
 from __future__ import annotations
 from typing import TYPE_CHECKING
+import json
+import importlib.resources as resources
 
 from nicegui import ui, app
 
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
+from arbok_inspector.widgets.build_xarray_html import build_xarray_html
+from arbok_inspector.widgets.json_plot_settings_dialog import JsonPlotSettingsDialog
 from arbok_inspector.helpers.unit_formater import unit_formatter
 from arbok_inspector.classes.run import Run
 
@@ -20,7 +24,7 @@ RUN_TABLE_COLUMNS = [
 ]
 
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
-#placeholders = {'plots': None}
+
 
 EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start'
 
@@ -37,6 +41,10 @@ async def run_page(run_id: str):
     run = Run(int(run_id))
     app.storage.tab["placeholders"] = {'plots': None}
     app.storage.tab["run"] = run
+    with resources.files("arbok_inspector.configurations").joinpath("1d_plot.json").open("r") as f:
+        app.storage.tab["plot_dict_1D"] = json.load(f)
+    with resources.files("arbok_inspector.configurations").joinpath("2d_plot.json").open("r") as f:
+        app.storage.tab["plot_dict_2D"] = json.load(f)
 
     ui.label(f'Run Page for ID: {run_id}').classes('text-2xl font-bold mb-6')
     with ui.column().classes('w-full gap-1'):
@@ -63,30 +71,49 @@ async def run_page(run_id: str):
                         ).classes('text-sm h-4').props('color=green')
         with ui.expansion('Plots', icon='stacked_line_chart', value=True)\
             .classes(EXPANSION_CLASSES):
-            with ui.row().classes('w-full p-4 items-center rounded-lg border border-neutral-600 bg-neutral-800'):
+            with ui.row().classes('w-full p-2 gap-2 items-center rounded-md border border-neutral-600 bg-neutral-800 text-sm'):
+                
                 ui.button(
-                    text = 'Update plots',
-                    icon = 'refresh',
+                    text='Update',
+                    icon='refresh',
                     color='green',
-                    on_click=lambda: build_xarray_grid(run),
-                ).classes('mr-4')
+                    on_click=lambda: build_xarray_grid(),
+                ).classes('h-8 px-2')
+
                 ui.button(
-                    text = 'Show dims',
-                    icon = 'info',
+                    text='Debug',
+                    icon='info',
+                    color='red',
                     on_click=lambda: print_debug(run),
-                    color = 'red'
-                ).classes('mx-4')
+                ).classes('h-8 px-2')
+
+                dialog_1d = JsonPlotSettingsDialog('plot_dict_1D')
+                dialog_2d = JsonPlotSettingsDialog('plot_dict_2D')
+
+                ui.button(
+                    text='1D settings',
+                    color='pink',
+                    on_click=dialog_1d.open,
+                ).classes('h-8 px-2')
+
+                ui.button(
+                    text='2D settings',
+                    color='orange',
+                    on_click=dialog_2d.open,
+                ).classes('h-8 px-2')
+
                 ui.number(
-                    label = '# plots per column',
-                    value = 2,
-                    format = '%.0f',
-                    on_change = lambda e: set_plots_per_column(e.value)
-                ).classes('ml-4 w-32 text-xs')
+                    label='# per col',
+                    value=2,
+                    format='%.0f',
+                    on_change=lambda e: set_plots_per_column(e.value),
+                ).props('dense outlined').classes('w-20 h-8 text-xs')
+                #.style('line-height: 1rem; padding-top: 0; padding-bottom: 0;')
             app.storage.tab["placeholders"]["plots"] = ui.row().classes('w-full p-4')
-            build_xarray_grid(run)
+            build_xarray_grid()
         with ui.expansion('xarray summary', icon='summarize', value=False)\
             .classes(EXPANSION_CLASSES):
-            display_xarray_html()
+            build_xarray_html()
         with ui.expansion('analysis', icon='science', value=False)\
             .classes(EXPANSION_CLASSES):
             with ui.row():
@@ -156,7 +183,7 @@ def update_dim_selection(dim: Dim, value: str, slider_placeholder):
     else:
         run.update_subset_dims(dim, value)
         dim.option = value
-    build_xarray_grid(run)
+    build_xarray_grid()
 
 def update_value_from_dim_slider(label, slider, dim: Dim):
     """
@@ -170,7 +197,7 @@ def update_value_from_dim_slider(label, slider, dim: Dim):
     run = app.storage.tab["run"]
     label_txt = f' {unit_formatter(run, dim, slider.value)} '
     label.set_content(label_txt)
-    build_xarray_grid(run)
+    build_xarray_grid()
 
 def set_plots_per_column(value: int):
     """
@@ -182,7 +209,7 @@ def set_plots_per_column(value: int):
     run = app.storage.tab["run"]
     ui.notify(f'Setting plots per column to {value}', position='top-right')
     run.plots_per_column = int(value)
-    build_xarray_grid(run)
+    build_xarray_grid()
 
 
 def update_sweep_dim_name(dim: Dim, new_name: str):
@@ -196,53 +223,7 @@ def update_sweep_dim_name(dim: Dim, new_name: str):
     run = app.storage.tab["run"]
     dim.name = new_name
     dim.ui_selector.label = new_name.replace("__", ".")
-    build_xarray_grid(run)
-
-def display_xarray_html():
-    """Display the xarray dataset in a dark-themed style."""
-    run = app.storage.tab["run"]
-    ds = run.full_data_set
-    with ui.column().classes('w-full'):
-        ui.html('''
-        <style>
-        /* Wrap styles to only apply inside this container */
-        .xarray-dark-wrapper {
-            background-color: #343535; /* Tailwind gray-800 */
-            color: #ffffff;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            overflow-x: auto;
-        }
-
-        .xarray-dark-wrapper th,
-        .xarray-dark-wrapper td {
-            color: #d1d5db; /* Tailwind gray-300 */
-            background-color: transparent;
-        }
-
-        .xarray-dark-wrapper .xr-var-name {
-            color: #93c5fd !important; /* Tailwind blue-300 */
-        }
-
-        .xarray-dark-wrapper .xr-var-dims,
-        .xarray-dark-wrapper .xr-var-data {
-            color: #d1d5db !important; /* Light gray */
-        }
-
-        /* Optional: override any inline black text */
-        .xarray-dark-wrapper * {
-            color: inherit !important;
-            background-color: transparent !important;
-        }
-        </style>
-        ''')
-
-        # Wrap the dataset HTML in a div with that class
-        ui.html(f'''
-        <div class="xarray-dark-wrapper">
-        {ds._repr_html_()}
-        </div>
-        ''')
+    build_xarray_grid()
 
 def print_debug(run: Run):
     print("\nDebugging Run:")

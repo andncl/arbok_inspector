@@ -1,0 +1,49 @@
+{
+  "data": [],
+  "layout": {
+    "template": "plotly_dark",
+    "autosize": true,
+    "margin": {
+      "l": 40,
+      "r": 40,
+      "t": 40,
+      "b": 40
+    },
+    "xaxis": {
+      "type": "linear",
+      "title": {
+        "text": "placeholder x-axis",
+        "font": {
+          "size": 12
+        }
+      }
+    },
+    "yaxis": {
+      "type": "linear",
+      "title": {
+        "text": "placeholder y-axis",
+        "font": {
+          "size": 12
+        }
+      }
+    },
+    "title": {
+      "text": "placeholder title",
+      "x": 0.5,
+      "xanchor": "center",
+      "yanchor": "bottom",
+      "font": {
+        "size": 16
+      }
+    },
+    "legend": {
+      "x": 1,
+      "y": 1,
+      "xanchor": "right",
+      "yanchor": "top",
+      "bgcolor": "rgba(0,0,0,0.5)",
+      "bordercolor": "white",
+      "borderwidth": 1
+    }
+  }
+}
