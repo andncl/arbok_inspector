@@ -1,4 +1,7 @@
 """Module to build a grid of xarray plots for a given run."""
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 import math
 import copy
 import plotly.graph_objects as go
@@ -8,15 +11,25 @@ from arbok_inspector.helpers.unit_formater import unit_formatter
 from arbok_inspector.helpers.string_formaters import (
     title_formater, axis_label_formater
 )
-def build_xarray_grid(run):
+
+if TYPE_CHECKING:
+    from arbok_inspector.classes.dim import Dim
+    from arbok_inspector.classes.run import Run
+    from plotly.graph_objs import Figure
+
+
+def build_xarray_grid() -> None:
     """
     Build a grid of xarray plots for the given run.
-    
+
     Args:
-        run: The Run object containing the data to plot.
-        container: The NiceGUI container to hold the plots.
+        run (Run): The Run object containing the data to plot.
+
+    Returns:
+        Figure: The Plotly Figure object containing the grid of plots.
     """
     #client = await ui.context.client.connected()
+    run = app.storage.tab["run"]
     container = app.storage.tab["placeholders"]['plots']
     container.clear()
     if run.dim_axis_option['x-axis'] is None:
@@ -26,6 +39,7 @@ def build_xarray_grid(run):
         return
     ds = run.generate_subset()
     print(f"Found {len(ds.dims)} dimensions to plot in subset:")
+    fig_dict = {}
     if len(ds.dims) == 1:
         create_1d_plot(run, ds, container)
     elif len(ds.dims) == 2:
@@ -35,8 +49,9 @@ def build_xarray_grid(run):
             'The selected dimensions result in more than 2D data.<br>'
             'Please select only 1 or 2 dimensions to plot)',
             color = 'red')
+        return None
 
-def create_1d_plot(run, ds, container):
+def create_1d_plot(run: Run, ds: xr.Dataset, container: ui.Row) -> None:
     """
     Create a 1D plot for the given run and dataset.
 
@@ -46,44 +61,29 @@ def create_1d_plot(run, ds, container):
         container: The NiceGUI container to hold the plot.
     """
     print("Creating 1D plot")
-    fig = go.Figure()
     x_dim = run.dim_axis_option['x-axis'].name
+    traces = []
+    plot_dict = copy.deepcopy(app.storage.tab["plot_dict_1D"])
     for key in run.plot_selection:
         da = ds[key]
-        fig.add_trace(
-            go.Scatter(
-                x=da.coords[x_dim].values,
-                y=da.values,
-                mode='lines+markers',
-                name=key.replace("__", "."),
-            )
-        )
-    fig.update_layout(
-        template = 'plotly_dark',
-        autosize=True,
-        margin=dict(l=40, r=40, t=40, b=40),
-        xaxis_title=axis_label_formater(da, x_dim),
-        title=dict(
-            text=title_formater(run),
-            x=0.5,
-            xanchor='center',
-            yanchor = 'bottom',
-            font = dict(size=16)
-            ),
-        legend=dict(
-            x=1,
-            y=1,
-            xanchor='right',
-            yanchor='top',
-            bgcolor='rgba(0,0,0,0.5)',
-            bordercolor='white',
-            borderwidth=1,
-        )
-    )
-    with container:
-        ui.plotly(fig).classes('w-full').style('min-height: 400px;')
+        traces.append({
+            "type": "scatter",
+            "mode": "lines+markers",
+            "name": key.replace("__", "."),
+            "x": da.coords[x_dim].values.tolist(),
+            "y": da.values.tolist(),
+        })
 
-def create_2d_grid(run, ds, container):
+    plot_dict["data"] = traces
+    plot_dict["layout"]["xaxis"]["title"] = axis_label_formater(ds, x_dim)
+    plot_dict["layout"]["title"]["text"] = title_formater(run)
+
+    with container:
+        fig = go.Figure(plot_dict)
+        ui.plotly(fig).classes('w-full').style('min-height: 400px;')
+        app.storage.tab["plot_dict_1D"] = plot_dict
+
+def create_2d_grid(run, ds, container) -> dict:
     """
     Create a grid of 2D plots for the given run and dataset.
 
@@ -108,53 +108,19 @@ def create_2d_grid(run, ds, container):
 
     x_dim = run.dim_axis_option['x-axis'].name
     y_dim = run.dim_axis_option['y-axis'].name
+    plot_dict = copy.deepcopy(app.storage.tab["plot_dict_2D"])
+    plot_dict["layout"]["xaxis"]["title"] = axis_label_formater(ds, x_dim)
+    plot_dict["layout"]["yaxis"]["title"] = axis_label_formater(ds, y_dim)
     plot_idx = 0
     def create_2d_plot(plot_idx):
         key = keys[plot_idx]
         da = ds[key]
         if x_dim != da.dims[1]:
             da = da.transpose(y_dim, x_dim)
-        fig = go.Figure(
-            data=go.Heatmap(
-                z=da.values,
-                x=da.coords[x_dim].values,
-                y=da.coords[y_dim].values,
-                colorscale='magma',
-                colorbar=dict(
-                    thickness=10,
-                    xanchor='left',
-                    x= 1.0,
-                ),
-                showscale=True,
-            )
-        )
-        fig.update_layout(
-            template = 'plotly_dark',
-            autosize=True,
-            margin=dict(l=40, r=40, t=40, b=40),
-            xaxis = dict(
-                title = dict(
-                    text = axis_label_formater(da, x_dim),
-                    font = dict(size=12)
-                ),
-                tickfont=dict(size=12),
-            ),
-            yaxis = dict(
-                title = dict(
-                    text=axis_label_formater(da, y_dim),
-                    font = dict(size=12)
-                ),
-                tickfont=dict(size=12),
-            ),
-            title=dict(
-                text=f'<b>{pretty_keys[plot_idx]}</b><br>'+ title_formater(run),
-                x=0.5,
-                xanchor='center',
-                yanchor = 'bottom',
-                font = dict(size=12),
-                ),
-        )
-        return fig
+        plot_dict["data"][0]["z"] = da.values.tolist()
+        plot_dict["layout"]["title"]["text"] = (
+            f"<b>{pretty_keys[plot_idx]}</b><br>{title_formater(run)}")
+        return go.Figure(plot_dict)
 
     with container:
         with ui.column().classes('w-full'):
@@ -170,3 +136,4 @@ def create_2d_grid(run, ds, container):
                             ):
                             ui.plotly(fig).classes('w-full').style('min-height: 300px;')
                         plot_idx += 1
+        app.storage.tab["plot_dict_2D"] = plot_dict
