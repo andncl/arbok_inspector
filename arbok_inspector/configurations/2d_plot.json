@@ -24,6 +24,7 @@
       "b": 40
     },
     "xaxis": {
+      "type": "linear",
       "title": {
         "text": "placeholder x-axis",
         "font": {
@@ -35,6 +36,7 @@
       }
     },
     "yaxis": {
+      "type": "linear",
       "title": {
         "text": "placeholder y-axis",
         "font": {

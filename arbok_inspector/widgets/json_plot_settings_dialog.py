@@ -25,7 +25,7 @@ class JsonPlotSettingsDialog:
         plot_dict = app.storage.tab[self.dimension]
 
         with ui.dialog() as dialog, ui.card():
-            with ui.column().classes('w_full'):
+            with ui.column().classes('w_full h-screen'):
                 ui.label('Plot Settings')
                 self.json_editor = ui.json_editor(
                     properties = {"content": {"json": plot_dict}},
