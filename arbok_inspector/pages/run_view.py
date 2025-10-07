@@ -12,8 +12,8 @@ from arbok_inspector.widgets.json_plot_settings_dialog import JsonPlotSettingsDi
 from arbok_inspector.helpers.unit_formater import unit_formatter
 from arbok_inspector.classes.run import Run
 
-if TYPE_CHECKING:
-    from arbok_inspector.classes.dim import Dim
+
+from arbok_inspector.classes.dim import Dim
 
 RUN_TABLE_COLUMNS = [
     {'field': 'name', 'filter': 'agTextColumnFilter', 'floatingFilter': True},
@@ -68,7 +68,7 @@ async def run_page(run_id: str):
                             text = result.replace("__", "."),
                             value = value,
                             on_change = lambda e, r=result: run.update_plot_selection(e.value, r),
-                        ).classes('text-sm h-4').props('color=green')
+                        ).classes('text-sm h-4').props('color=purple')
         with ui.expansion('Plots', icon='stacked_line_chart', value=True)\
             .classes(EXPANSION_CLASSES):
             with ui.row().classes('w-full p-2 gap-2 items-center rounded-md border border-neutral-600 bg-neutral-800 text-sm'):
@@ -107,7 +107,7 @@ async def run_page(run_id: str):
                     value=2,
                     format='%.0f',
                     on_change=lambda e: set_plots_per_column(e.value),
-                ).props('dense outlined').classes('w-20 h-8 text-xs')
+                ).props('dense outlined').classes('w-20 h-8 text-xs mb-2')
                 #.style('line-height: 1rem; padding-top: 0; padding-bottom: 0;')
             app.storage.tab["placeholders"]["plots"] = ui.row().classes('w-full p-4')
             build_xarray_grid()
