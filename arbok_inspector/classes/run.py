@@ -186,4 +186,4 @@ class Run:
                 position='top-right'
             )
         print(f"{self.plot_selection= }")
-        build_xarray_grid(self)
+        build_xarray_grid()
