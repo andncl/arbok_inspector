@@ -75,7 +75,7 @@ def create_1d_plot(run: Run, ds: xr.Dataset, container: ui.Row) -> None:
         })
 
     plot_dict["data"] = traces
-    plot_dict["layout"]["xaxis"]["title"] = axis_label_formater(ds, x_dim)
+    plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(ds, x_dim)
     plot_dict["layout"]["title"]["text"] = title_formater(run)
 
     with container:
@@ -109,8 +109,8 @@ def create_2d_grid(run, ds, container) -> dict:
     x_dim = run.dim_axis_option['x-axis'].name
     y_dim = run.dim_axis_option['y-axis'].name
     plot_dict = copy.deepcopy(app.storage.tab["plot_dict_2D"])
-    plot_dict["layout"]["xaxis"]["title"] = axis_label_formater(ds, x_dim)
-    plot_dict["layout"]["yaxis"]["title"] = axis_label_formater(ds, y_dim)
+    plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(ds, x_dim)
+    plot_dict["layout"]["yaxis"]["title"]["text"] = axis_label_formater(ds, y_dim)
     plot_idx = 0
     def create_2d_plot(plot_idx):
         key = keys[plot_idx]
@@ -136,4 +136,4 @@ def create_2d_grid(run, ds, container) -> dict:
                             ):
                             ui.plotly(fig).classes('w-full').style('min-height: 300px;')
                         plot_idx += 1
-        app.storage.tab["plot_dict_2D"] = plot_dict
+    app.storage.tab["plot_dict_2D"] = plot_dict
