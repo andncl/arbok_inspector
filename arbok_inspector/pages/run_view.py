@@ -118,6 +118,10 @@ async def run_page(run_id: str):
             .classes(EXPANSION_CLASSES):
             with ui.row():
                 ui.label("Working on it!  -Andi").classes('text-lg font-semibold')
+        with ui.expansion('metadata', icon='numbers', value=False)\
+            .classes(EXPANSION_CLASSES):
+            ui.row().classes('w-full p-4')
+                
 
 def add_dim_dropdown(sweep_idx: int):
     """

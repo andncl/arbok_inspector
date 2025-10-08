@@ -25,6 +25,7 @@ RUN_PARAM_DICT = {
     'completed_timestamp': 'Completed',
 }
 AGGRID_STYLE = 'height: 95%; min-height: 0;'
+EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start'
 
 @ui.page('/browser')
 def database_browser_page():
@@ -35,23 +36,47 @@ def database_browser_page():
         with ui.row().classes('w-full items-center justify-between'):
             ui.label('Arbok Inspector').classes('text-3xl font-bold mb-6')
             
-            with ui.card().classes('w-full p-2'):
-                ui.label('Database Information').classes('text-xl font-semibold mb-4')
-                if inspector.database_path:
-                    ui.label(f'Database Path: {str(inspector.database_path)}').classes()
-                else:
-                    ui.label('No database selected').classes('text-lg text-red-500')
-                
-                # Button to select a new database
-                with ui.row().classes('w-full justify-start'):
-                    ui.button(
-                        text = 'Select New Database',
-                        on_click=lambda: ui.navigate.to('/'),
-                        color='purple').classes()
-                    ui.button(
-                        text = 'Reload',
-                        on_click=lambda: update_day_selecter(grids['day'])
-                        ).classes()
+            with ui.expansion('Database info and settings', icon='info', value=True)\
+                .classes(EXPANSION_CLASSES).props('expand-separator'):
+                with ui.row().classes('w-full'):
+                    with ui.column().classes('w-1/3'):
+                        ui.label('Database Information').classes('text-xl font-semibold mb-4')
+                        if inspector.database_path:
+                            ui.label(f'Database Path: {str(inspector.database_path)}').classes()
+                        else:
+                            ui.label('No database selected').classes('text-lg text-red-500')
+                        
+                        # Button to select a new database
+                    with ui.column().classes('w-1/2'):
+                        with ui.row().classes('w-full'):
+                            result_input = ui.input(
+                                label = 'auto-plot keywords',
+                                placeholder="e.g:\t\t[ ( 'Q1' , 'state' ), 'feedback' ]"
+                                ).props('rounded outlined dense')\
+                                .classes('w-full')\
+                                .tooltip("""
+                                    Selects all results that contain the specified keywords in their name.<br>
+                                    Can be a single keyword (string) or a tuple of keywords.<br>
+                                    The latter one requires all keywords to be present in the result name.<br>
+
+                                    The given example would select all results that contain 'Q1' and 'state' in their name<br>
+                                    or all results that contain 'feedback' in their name.
+                                """).props('v-html')
+                            result_input = ui.input(
+                                label = 'average-axis keyword',
+                                value = "iteration"
+                                ).props('rounded outlined dense')\
+                                .classes('w-full')
+                        with ui.row().classes('w-full justify-start'):
+                            ui.button(
+                                text = 'Select New Database',
+                                on_click=lambda: ui.navigate.to('/'),
+                                color='purple').classes()
+                            ui.button(
+                                text = 'Reload',
+                                on_click=lambda: update_day_selecter(grids['day']),
+                                color = '#4BA701'
+                                ).classes()
 
         with ui.row().classes('w-full flex-1'):
             with ui.column().style('width: 120px;').classes('h-full'):

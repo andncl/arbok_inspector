@@ -118,6 +118,8 @@ def create_2d_grid(run, ds, container) -> dict:
         if x_dim != da.dims[1]:
             da = da.transpose(y_dim, x_dim)
         plot_dict["data"][0]["z"] = da.values.tolist()
+        plot_dict["data"][0]["x"] = da.coords[x_dim].values.tolist()
+        plot_dict["data"][0]["y"] = da.coords[y_dim].values.tolist()
         plot_dict["layout"]["title"]["text"] = (
             f"<b>{pretty_keys[plot_idx]}</b><br>{title_formater(run)}")
         return go.Figure(plot_dict)
