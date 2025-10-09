@@ -81,7 +81,7 @@ class Run:
         """
         options = {x: [] for x in AXIS_OPTIONS}
         for dim in self.dims:
-            if 'iteration' in dim.name:
+            if 'sadfljhsadklf' in dim.name:
                 dim.option = 'average'
                 options['average'].append(dim)
         for dim in reversed(self.dims):
