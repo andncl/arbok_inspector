@@ -12,7 +12,6 @@ from arbok_inspector.widgets.json_plot_settings_dialog import JsonPlotSettingsDi
 from arbok_inspector.helpers.unit_formater import unit_formatter
 from arbok_inspector.classes.run import Run
 
-
 from arbok_inspector.classes.dim import Dim
 
 RUN_TABLE_COLUMNS = [
@@ -25,8 +24,8 @@ RUN_TABLE_COLUMNS = [
 
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
 
-
 EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start'
+
 
 @ui.page('/run/{run_id}')
 async def run_page(run_id: str):
@@ -38,7 +37,9 @@ async def run_page(run_id: str):
     """
     ui.page_title(f"{run_id}")
     _ = await ui.context.client.connected()
+    # run = app.storage.general["run"] # Run(int(run_id))
     run = Run(int(run_id))
+
     app.storage.tab["placeholders"] = {'plots': None}
     app.storage.tab["run"] = run
     with resources.files("arbok_inspector.configurations").joinpath("1d_plot.json").open("r") as f:
@@ -58,12 +59,9 @@ async def run_page(run_id: str):
                 with ui.column().classes('w-1/3 gap-2'):
                     ui.label("Results:").classes('text-lg font-semibold')
                     for i, result in enumerate(run.full_data_set):
-                        if i == 0:
-                            ## TODO: save checkboxes in dict and read values for plotting!
+                        value = False
+                        if result in run.plot_selection:
                             value = True
-                            run.plot_selection.append(result)
-                        else:
-                            value = False
                         ui.checkbox(
                             text = result.replace("__", "."),
                             value = value,
