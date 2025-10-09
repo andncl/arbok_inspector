@@ -134,7 +134,7 @@ def add_dim_dropdown(sweep_idx: int):
     width = 'w-1/2' if run.together_sweeps else 'w-full'
     dim = run.sweep_dict[sweep_idx]
     local_placeholder = {"slider": None}
-    with ui.row().classes('w-full no-wrap items-center gap-1'):
+    with ui.column().classes('w-full no-wrap items-center gap-1'):
         ui_element = ui.select(
             options = AXIS_OPTIONS,
             value = str(dim.option),
@@ -150,7 +150,9 @@ def add_dim_dropdown(sweep_idx: int):
                 value=dim.name,
                 on_change = lambda e: update_sweep_dim_name(dim, e.value)
                 ).classes(width).props('dense')
-    local_placeholder["slider"] = ui.column().classes('w-full')
+        local_placeholder["slider"] = ui.column().classes('w-full')
+        if dim.option == 'select_value':
+            build_dim_slider(run, dim, local_placeholder["slider"])
 
 def update_dim_selection(dim: Dim, value: str, slider_placeholder):
     """
@@ -162,34 +164,44 @@ def update_dim_selection(dim: Dim, value: str, slider_placeholder):
         slider_placeholder: The UI placeholder to update
     """
     run = app.storage.tab["run"]
-    slider_placeholder.clear()
+    if slider_placeholder is not None:
+        slider_placeholder.clear()
     print(value)
     if value == 'average':
         run.update_subset_dims(dim, 'average')
         dim.option = 'average'
-    if value == 'select_value':
-        dim_size = run.full_data_set.sizes[dim.name]
+    if value == 'select_value':  
         with slider_placeholder:
-            with ui.row().classes("w-full items-center"):
-                with ui.column().classes('flex-grow'):
-                    slider = ui.slider(
-                        min=0, max=dim_size - 1, step=1, value=0,
-                        on_change=lambda e: run.update_subset_dims(dim, 'select_value', e.value),
-                        ).classes('flex-grow')\
-                        .props('color="purple" markers label-always')
-                label = ui.html('').classes('shrink-0 text-right px-2 py-1 bg-purple text-white rounded-lg text-xs font-normal text-center')
-                update_value_from_dim_slider(label, slider, dim)
-                slider.on(
-                    'update:model-value',
-                    lambda e: update_value_from_dim_slider(label, slider, dim),
-                    throttle=0.2, leading_events=False)
-        run.update_subset_dims(dim, 'select_value', 0)
+            build_dim_slider(run, dim, slider_placeholder)
     else:
         run.update_subset_dims(dim, value)
         dim.option = value
     build_xarray_grid()
 
-def update_value_from_dim_slider(label, slider, dim: Dim):
+def build_dim_slider(run: Runm, dim: Dim, slider_placeholder):
+    """
+    Build a slider for selecting the index of a dimension.
+
+    Args:
+        dim (Dim): The dimension object
+        slider_placeholder: The UI placeholder to add the slider to
+    """
+    dim_size = run.full_data_set.sizes[dim.name]
+    with ui.row().classes("w-full items-center"):
+        with ui.column().classes('flex-grow'):
+            slider = ui.slider(
+                min=0, max=dim_size - 1, step=1, value=0,
+                on_change=lambda e: run.update_subset_dims(dim, 'select_value', e.value),
+                ).classes('flex-grow')\
+                .props('color="purple" markers label-always')
+        label = ui.html('').classes('shrink-0 text-right px-2 py-1 bg-purple text-white rounded-lg text-xs font-normal text-center')
+        update_value_from_dim_slider(label, slider, dim, plot = False)
+        slider.on(
+            'update:model-value',
+            lambda e: update_value_from_dim_slider(label, slider, dim),
+            throttle=0.2, leading_events=False)
+
+def update_value_from_dim_slider(label, slider, dim: Dim, plot = True):
     """
     Update the label next to the slider with the current value and unit.
     
@@ -201,7 +213,8 @@ def update_value_from_dim_slider(label, slider, dim: Dim):
     run = app.storage.tab["run"]
     label_txt = f' {unit_formatter(run, dim, slider.value)} '
     label.set_content(label_txt)
-    build_xarray_grid()
+    if plot:
+        build_xarray_grid()
 
 def set_plots_per_column(value: int):
     """
