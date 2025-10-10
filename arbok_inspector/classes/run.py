@@ -4,17 +4,21 @@ Run class representing a single run of the experiment.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+import ast
+import re
 import json
 from qcodes.dataset import load_by_id
-from nicegui import ui
+from nicegui import ui, app
 
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
+# from arbok_inspector.pages.database_browser import shared_data
 
 if TYPE_CHECKING:
     from qcodes.dataset.data_set import DataSet
     from xarray import Dataset
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
+
 
 class Run:
     """
@@ -31,6 +35,7 @@ class Run:
         self.title: str = f'Run ID: {run_id}  (-> add experiment)'
         self.dataset: DataSet = load_by_id(run_id)
         self.full_data_set: Dataset = self.dataset.to_xarray_dataset()
+        self.last_subset: Dataset = self.full_data_set
 
         self.together_sweeps: bool = False
         self.parallel_sweep_axes: dict = {}
@@ -40,7 +45,10 @@ class Run:
         self.dim_axis_option: dict[str, str|list[Dim]] = self.set_dim_axis_option()
         print(self.dims)
 
-        self.plot_selection: list[str] = []
+        self.plot_selection: list[str] = self.select_results_by_keywords(
+            app.storage.general["result_keywords"]
+        )
+        print(f"Initial plot selection: {self.plot_selection}")
         self.plots_per_column: int = 2
 
     def load_sweep_dict(self):
@@ -80,8 +88,9 @@ class Run:
             options (dict): Dictionary with keys 'average', 'select_value', 'y-axis',
         """
         options = {x: [] for x in AXIS_OPTIONS}
+        print(f"Setting average to {app.storage.general['avg_axis']}")
         for dim in self.dims:
-            if 'sadfljhsadklf' in dim.name:
+            if app.storage.general["avg_axis"] in dim.name:
                 dim.option = 'average'
                 options['average'].append(dim)
         for dim in reversed(self.dims):
@@ -104,6 +113,45 @@ class Run:
                 print(f"Setting select_value to {dim.name}")
         return options
 
+    def select_results_by_keywords(self, keywords: list[str|tuple]) -> list[str]:
+        """
+        Select results by keywords in their name.
+        Args:
+            keywords (list): List of keywords to search for
+        Returns:
+            selected_results (list): List of selected result names
+        """
+        print(f"using keywords: {keywords}")
+        if keywords is None or len(keywords) == 0 or keywords == '':
+            return [next(iter(self.full_data_set.data_vars))]
+        s_quoted = re.sub(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', r'"\1"', keywords)
+        try:
+            keywords = ast.literal_eval(s_quoted)
+        except (SyntaxError, ValueError):
+            print(f"Error parsing keywords: {s_quoted}")
+            keywords = []
+            ui.notify(
+                f"Error parsing result keywords: {s_quoted}. Please use a valid Python list.",
+                color='red',
+                position='top-right'
+            )
+        if not isinstance(keywords, list):
+            keywords = [keywords]
+        selected_results = []
+        print(f"using keywords: {keywords}")
+        for result in self.full_data_set.data_vars:
+            for keyword in keywords:
+                if isinstance(keyword, str) and keyword in str(result):
+                    selected_results.append(result)
+                elif isinstance(keyword, tuple) and all(
+                        subkey in str(result) for subkey in keyword):
+                    selected_results.append(result)
+        selected_results = list(set(selected_results))  # Remove duplicates
+        if len(selected_results) == 0:
+            selected_results = [next(iter(self.full_data_set.data_vars))]
+        print(f"Selected results: {selected_results}")
+        return selected_results
+    
     def update_subset_dims(self, dim: Dim, selection: str, index = None):
         """
         Update the subset dimensions based on user selection.
@@ -161,6 +209,7 @@ class Run:
             sub_set = sub_set.mean(dim=avg_axis.name)
         sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
         sub_set = sub_set.isel(**sel_dict).squeeze()
+        self.last_subset = sub_set
         return sub_set
 
     def update_plot_selection(self, value: bool, readout_name: str):
