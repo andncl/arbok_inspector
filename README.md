@@ -3,58 +3,72 @@
 arbok_inspector is a small inspection and visualization utility for measurement
 databases used alongside the Arbok/ekans measurement tooling.
 It provides a lightweight GUI and CLI to browse runs and visualize data.
+# arbok_inspector 🚀
 
-## Highlights
+Welcome! arbok_inspector is a small, friendly tool for exploring and visualizing measurement databases produced alongside the Arbok / ekans tooling. If you want to quickly peek at runs, inspect metadata, or try small analyses, this project helps you do that with a lightweight UI and some handy helpers. 🔍
 
-- Browse measurement runs and metadata
-- Interactive pages and widgets (NiceGUI-based UI components live in `pages/` and `widgets/`)
-- Tools to prepare and analyze data in `analysis/`
-- Includes a small test database (`test.db`) for local testing
+Why you might use it
+- Fast browsing of measurement runs and their metadata
+- Interactive pages and widgets built with NiceGUI (see `pages/` and `widgets/`)
+- Simple analysis and data preparation helpers in `analysis/`
+- A bundled `test.db` for quick local demos
 
-## Quick start
+Quick start — Try it now (1–2 minutes)
 
-1. Clone the repository and change into the `arbok_inspector` project directory (the folder that contains `pyproject.toml`).
+1. From the project root (the folder containing `pyproject.toml`), install in editable/dev mode:
 
-2. Install the package in editable mode (this will install dependencies from `pyproject.toml`):
+```bash
+python -m pip install -e .
+```
 
-	 python -m pip install -e .
+2. Launch the app (pick one):
 
-	 (Alternatively, use your preferred environment manager — see `pyproject.toml` for declared dependencies.)
+```bash
+python -m arbok_inspector.main
+# or
+python arbok_inspector/main.py
+```
 
-3. Run the inspector application. There are a couple of ways to launch it:
+If the app asks for a database, point it at the included `test.db` to explore instantly. If you prefer the CLI, check `arbok_inspector/cli.py` for options.
 
-	 - Run the package's main module:
+If something doesn't start, check that dependencies from `pyproject.toml` are installed and that you're running a compatible Python version.
 
-		 python -m arbok_inspector.main
+Project layout — what you'll find
 
-	 - Or run the module file directly:
+- `main.py` — app entrypoint and startup logic
+- `cli.py` — command-line helpers and quick-run options
+- `state.py` — application state & database handling
+- `pages/` — NiceGUI pages (database browser, run view, greeter, ...)
+- `widgets/` — reusable UI widgets (grid builders, selectors, dialogs)
+- `analysis/` — analysis and data-prep utilities
+- `classes/` — small domain objects used across the app
+- `helpers/` — formatting and utility helpers
+- `test_main.py` — simple tests you can run with pytest
 
-		 python arbok_inspector/main.py
+Development & testing 🛠️
 
-	 The project also contains a small CLI helper in `cli.py` — check it for available command-line options.
+- Run tests:
 
-4. For a quick local demo, the repository includes `test.db` in the package directory. Point the inspector to that file when prompted or by using CLI options if available.
+```bash
+pytest -q
+```
 
-## Project layout
+- Use an editable install for local development to pick up changes immediately:
 
-Key package files and directories (inside the `arbok_inspector/` package):
+```bash
+python -m pip install -e .
+```
 
-- `main.py` — application entrypoint and startup logic
-- `cli.py` — command-line interface helpers
-- `state.py` — application state management and database handling
-- `pages/` — NiceGUI pages (UI screens such as the database browser and run view)
-- `widgets/` — custom UI widgets and helpers used by the pages
-- `analysis/` — analysis and data-preparation utilities
-- `classes/` — small domain objects used by the app (e.g., run/dim helpers)
-- `helpers/` — formatting and other small helper functions
-- `test_main.py` — a small test that verifies basic behavior (run with pytest)
+Contributing & help 🙌
 
-## License
+Contributions, bug reports, and small feature requests are welcome. If you want to add a visualization or a new page, use `pages/` and `widgets/` for examples of how UI components are composed. When opening a PR, please keep changes focused and include a short description of how to exercise the change locally.
 
-See the repository `LICENSE` file in the project root for license details.
+License
 
-## Notes
+See the `LICENSE` file in the project root for license details.
 
-- The exact runtime dependencies are declared in `pyproject.toml`; for reproducible installs prefer using that manifest and your environment manager of choice.
-- If you need help running the app or want to add new visualizations, look at `pages/` and `widgets/` for examples of how UI components are composed.
+Notes & tips
+
+- For exact runtime dependencies check `pyproject.toml` — prefer using that manifest (and a virtual environment) for reproducible installs.
+- If you want me to add a short walkthrough for common tasks (open a run, plot data, export CSV), tell me which task you'd like first and I can add a step-by-step example here. 📘
 
