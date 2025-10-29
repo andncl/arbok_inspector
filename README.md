@@ -1,9 +1,7 @@
-# arbok_inspector
-
 arbok_inspector is a small inspection and visualization utility for measurement
 databases used alongside the Arbok/ekans measurement tooling.
 It provides a lightweight GUI and CLI to browse runs and visualize data.
-# arbok_inspector 🚀
+# arbok_inspector 🐍
 
 Welcome! arbok_inspector is a small, friendly tool for exploring and visualizing measurement databases produced alongside the Arbok / ekans tooling. If you want to quickly peek at runs, inspect metadata, or try small analyses, this project helps you do that with a lightweight UI and some handy helpers. 🔍
 
@@ -71,4 +69,5 @@ Notes & tips
 
 - For exact runtime dependencies check `pyproject.toml` — prefer using that manifest (and a virtual environment) for reproducible installs.
 - If you want me to add a short walkthrough for common tasks (open a run, plot data, export CSV), tell me which task you'd like first and I can add a step-by-step example here. 📘
+
 
