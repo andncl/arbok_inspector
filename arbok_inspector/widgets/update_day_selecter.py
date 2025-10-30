@@ -1,17 +1,18 @@
 from datetime import datetime
-from nicegui import ui
+from nicegui import ui, app
 
 from arbok_inspector.state import inspector
 
 def update_day_selecter(day_grid):
-    inspector.cursor.execute("""
+    offset_hours = app.storage.general["timezone"]
+    inspector.cursor.execute(f"""
         SELECT 
             day,
             MIN(run_timestamp) AS earliest_ts
         FROM (
             SELECT 
                 run_timestamp,
-                DATE(datetime(run_timestamp, 'unixepoch')) AS day
+                DATE(datetime(run_timestamp, 'unixepoch', '{offset_hours} hours')) AS day
             FROM runs
         )
         GROUP BY day
