@@ -24,18 +24,11 @@ This is how arbok_inspector streamlines your data inspection:
 
 From the project root (the folder containing `pyproject.toml`), install:
 ```bash
-python -m pip install -e .
+pip install arbok-inspector
 ```
-To be added to pypi (pip) soon!
-
-Launch either from CLI:
+Launch from CLI:
 ```bash
 arbok-inspector
-```
-
-... or alternatively run in editable/dev mode:
-```bash
-python -m arbok_inspector/dev.py
 ```
 
 ## Project layout
@@ -50,18 +43,16 @@ python -m arbok_inspector/dev.py
 
 Development & testing 🛠️
 
-- Run tests:
-
+Clone this git repository and navigate into it.
+Use an editable install for local development to pick up changes immediately
 ```bash
-pytest -q
+pip install -e .
 ```
 
-- Use an editable install for local development to pick up changes immediately:
-
+To launch the app in editable mode launch from dev.py file:
 ```bash
-python -m pip install -e .
+python -m arbok_inspector/dev.py
 ```
-
 Contributing & help 🙌
 
 Contributions, bug reports, and small feature requests are welcome. If you want to add a visualization or a new page, use `pages/` and `widgets/` for examples of how UI components are composed. When opening a PR, please keep changes focused and include a short description of how to exercise the change locally.
