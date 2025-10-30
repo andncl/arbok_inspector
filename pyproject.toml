@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-arbok-inspector = "arbok_inspector.main:main"
+arbok-inspector = "arbok_inspector.main:ui.run"
 
 [tool.uv]
 package = true
