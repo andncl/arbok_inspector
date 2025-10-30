@@ -10,7 +10,7 @@ Plottr is a great tool to get started, but struggles with increasing abounts of 
 
 This is how arbok_inspector streamlines your data inspection:
 - Fast browsing of measurement runs and their metadata
-- Written in tailwind using nicegui wrapper
+- Written with [nicegui](https://nicegui.io/) acting as a [tailwind](https://tailwindcss.com/) wrapper
 - Browser based approach ensures cross system compatibily
 - Selected runs are opened in a new tab and run on a separate thread
   - this avoids blocking the entire application when loading big datasets
