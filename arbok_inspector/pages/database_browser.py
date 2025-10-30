@@ -38,6 +38,10 @@ async def database_browser_page():
     app.storage.general["result_keywords"] = None
     app.storage.tab["avg_axis_input"] = None
     app.storage.tab["result_keyword_input"] = None
+    offset_minutes = await ui.run_javascript('new Date().getTimezoneOffset()')
+    offset_hours = -float(offset_minutes) / 60
+    app.storage.general["timezone"] = offset_hours
+    print(f"TIMEZONE: UTC{offset_hours}")
 
     """Database general page showing the selected database"""
     grids = {'day': None, 'run': None}
