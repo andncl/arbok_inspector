@@ -47,7 +47,7 @@ async def run_page(run_id: str):
     with resources.files("arbok_inspector.configurations").joinpath("2d_plot.json").open("r") as f:
         app.storage.tab["plot_dict_2D"] = json.load(f)
 
-    ui.label(f'Run Page for ID: {run_id}').classes('text-2xl font-bold mb-6')
+    ui.label(f'Run Page for ID: {run_id}').classes('text-2xl font-bold')
     with ui.column().classes('w-full gap-1'):
         with ui.expansion('Coordinates and results', icon='checklist', value=True)\
             .classes(EXPANSION_CLASSES).props('expand-separator'):
