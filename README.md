@@ -1,35 +1,43 @@
-arbok_inspector is a small inspection and visualization utility for measurement
-databases used alongside the Arbok/ekans measurement tooling.
-It provides a lightweight GUI and CLI to browse runs and visualize data.
-# arbok_inspector 🚀
+# arbok_inspector 🐍
+arbok_inspector is an browser based inspection and visualization utility for QCoDeS measurement
+databases.
+It provides a lightweight GUI and CLI to browse runs and visualize data. �
 
-Welcome! arbok_inspector is a small, friendly tool for exploring and visualizing measurement databases produced alongside the Arbok / ekans tooling. If you want to quickly peek at runs, inspect metadata, or try small analyses, this project helps you do that with a lightweight UI and some handy helpers. 🔍
+The most commonly used used tool to visualize QCoDeS databases is
+[plottr](https://github.com/toolsforexperiments/plottr).
+Plottr is a great tool to get started, but struggles with increasing abounts of data.
 
-Why you might use it
+This is how arbok_inspector streamlines your data inspection:
 - Fast browsing of measurement runs and their metadata
-- Interactive pages and widgets built with NiceGUI (see `pages/` and `widgets/`)
-- Simple analysis and data preparation helpers in `analysis/`
-- A bundled `test.db` for quick local demos
+- Written in tailwind using nicegui wrapper
+- Browser based approach ensures cross system compatibily
+- Selected runs are opened in a new tab and run on a separate thread
+  - this avoids blocking the entire application when loading big datasets
+- plotting backend is plotly which natively returns html
+  - plotly plot customization is declarative and can therefore be tweaked in a simple json editor without implementing each customization by hand
+- runs are only loaded on demand
+  - startup time in plottr can be several minutes for large databases
+  - SQL queries load only the given days upon database selection, only loads respective runs once day is selected
 
 Quick start — Try it now (1–2 minutes)
 
-1. From the project root (the folder containing `pyproject.toml`), install in editable/dev mode:
+1. From the project root (the folder containing `pyproject.toml`), install :
 
 ```bash
 python -m pip install -e .
 ```
+To be added to pypi (pip) soon!
 
 2. Launch the app (pick one):
 
 ```bash
-python -m arbok_inspector.main
-# or
-python arbok_inspector/main.py
+arbok-inspector
 ```
 
-If the app asks for a database, point it at the included `test.db` to explore instantly. If you prefer the CLI, check `arbok_inspector/cli.py` for options.
-
-If something doesn't start, check that dependencies from `pyproject.toml` are installed and that you're running a compatible Python version.
+Alternatively run in editable/dev mode:
+```bash
+python -m arbok_inspector/dev.py
+```
 
 Project layout — what you'll find
 
