@@ -1,8 +1,9 @@
 # arbok_inspector 🐍
 arbok_inspector is an browser based inspection and visualization utility for QCoDeS measurement
 databases.
-It provides a lightweight GUI and CLI to browse runs and visualize data. �
+It provides a lightweight GUI and CLI to browse runs and visualize data. 
 
+## Features 🔎
 The most commonly used used tool to visualize QCoDeS databases is
 [plottr](https://github.com/toolsforexperiments/plottr).
 Plottr is a great tool to get started, but struggles with increasing abounts of data.
@@ -19,7 +20,7 @@ This is how arbok_inspector streamlines your data inspection:
   - startup time in plottr can be several minutes for large databases
   - SQL queries load only the given days upon database selection, only loads respective runs once day is selected
 
-Quick start — Try it now (1–2 minutes)
+## Quick start — Try it now (1–2 minutes) 📲
 
 1. From the project root (the folder containing `pyproject.toml`), install :
 
