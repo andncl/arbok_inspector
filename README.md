@@ -20,22 +20,20 @@ This is how arbok_inspector streamlines your data inspection:
   - startup time in plottr can be several minutes for large databases
   - SQL queries load only the given days upon database selection, only loads respective runs once day is selected
 
-## Quick start — Try it now (1–2 minutes) 📲
+## Installation 📲
 
-From the project root (the folder containing `pyproject.toml`), install :
-
+From the project root (the folder containing `pyproject.toml`), install:
 ```bash
 python -m pip install -e .
 ```
 To be added to pypi (pip) soon!
 
-Launch the app (pick one):
-
+Launch either from CLI:
 ```bash
 arbok-inspector
 ```
 
-Alternatively run in editable/dev mode:
+... or alternatively run in editable/dev mode:
 ```bash
 python -m arbok_inspector/dev.py
 ```
