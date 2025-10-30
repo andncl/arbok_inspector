@@ -22,14 +22,14 @@ This is how arbok_inspector streamlines your data inspection:
 
 ## Quick start — Try it now (1–2 minutes) 📲
 
-1. From the project root (the folder containing `pyproject.toml`), install :
+From the project root (the folder containing `pyproject.toml`), install :
 
 ```bash
 python -m pip install -e .
 ```
 To be added to pypi (pip) soon!
 
-2. Launch the app (pick one):
+Launch the app (pick one):
 
 ```bash
 arbok-inspector
@@ -40,17 +40,15 @@ Alternatively run in editable/dev mode:
 python -m arbok_inspector/dev.py
 ```
 
-Project layout — what you'll find
+## Project layout
 
 - `main.py` — app entrypoint and startup logic
-- `cli.py` — command-line helpers and quick-run options
 - `state.py` — application state & database handling
 - `pages/` — NiceGUI pages (database browser, run view, greeter, ...)
 - `widgets/` — reusable UI widgets (grid builders, selectors, dialogs)
 - `analysis/` — analysis and data-prep utilities
 - `classes/` — small domain objects used across the app
 - `helpers/` — formatting and utility helpers
-- `test_main.py` — simple tests you can run with pytest
 
 Development & testing 🛠️
 
