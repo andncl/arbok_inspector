@@ -22,10 +22,11 @@ This is how arbok_inspector streamlines your data inspection:
 
 ## Installation 📲
 
-From the project root (the folder containing `pyproject.toml`), install:
+From pypi install using pip in your environment:
 ```bash
 pip install arbok-inspector
 ```
+Even better if you are using uv, a uv.lock file is included!
 Launch from CLI:
 ```bash
 arbok-inspector
