@@ -33,6 +33,7 @@ shared_data = {}
 
 @ui.page('/browser')
 async def database_browser_page():
+    """Database general page showing the selected database"""
     _ = await ui.context.client.connected()
     app.storage.general["avg_axis"] = None
     app.storage.general["result_keywords"] = None
@@ -43,7 +44,6 @@ async def database_browser_page():
     app.storage.general["timezone"] = offset_hours
     print(f"TIMEZONE: UTC{offset_hours}")
 
-    """Database general page showing the selected database"""
     grids = {'day': None, 'run': None}
     with ui.column().classes('w-full h-screen'):
         ui.add_head_html('<title>Arbok Inspector - Database general</title>')
@@ -82,8 +82,8 @@ def build_info_section():
     """Build the database information section."""
     with ui.column().classes('w-1/3'):
         ui.label('Database Information').classes('text-xl font-semibold mb-4')
-        if inspector.database_path:
-            ui.label(f'Database Path: {str(inspector.database_path)}').classes()
+        if inspector.qcodes_database_path:
+            ui.label(f'Database Path: {str(inspector.qcodes_database_path)}').classes()
         else:
             ui.label('No database selected').classes('text-lg text-red-500')
         
