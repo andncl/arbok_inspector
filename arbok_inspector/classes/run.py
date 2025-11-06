@@ -9,16 +9,18 @@ import re
 import json
 from qcodes.dataset import load_by_id
 from nicegui import ui, app
+from sqlalchemy import select
+from sqlalchemy.orm import DeclarativeBase, mapped_column, Session
+import xarray as xr
 
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
-# from arbok_inspector.pages.database_browser import shared_data
+from arbok_inspector.state import inspector
 
 if TYPE_CHECKING:
     from qcodes.dataset.data_set import DataSet
     from xarray import Dataset
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
-
 
 class Run:
     """
@@ -33,8 +35,8 @@ class Run:
         """
         self.run_id: int = run_id
         self.title: str = f'Run ID: {run_id}  (-> add experiment)'
-        self.dataset: DataSet = load_by_id(run_id)
-        self.full_data_set: Dataset = self.dataset.to_xarray_dataset()
+
+        self.full_data_set: Dataset = self.load_dataset(run_id, inspector.database_type)
         self.last_subset: Dataset = self.full_data_set
 
         self.together_sweeps: bool = False
@@ -51,6 +53,29 @@ class Run:
         print(f"Initial plot selection: {self.plot_selection}")
         self.plots_per_column: int = 2
 
+    def load_dataset(self, run_id: int, database_type: str) -> DataSet:
+        """
+        Load the dataset for the given run ID from the appropriate database type.
+        
+        Args:
+            run_id (int): ID of the run
+            database_type (str): Type of the database ('qcodes' or 'arbok')
+        Returns:
+            DataSet: Loaded dataset
+        """
+        if database_type == 'qcodes':
+            dataset = load_by_id(run_id)
+            dataset = dataset.to_xarray_dataset()
+        else:
+            with Session(inspector.database_engine) as session:
+                self.sql_run = session.get(SqlRun, run_id)
+            minio_path = inspector.minio_bucket + "/"
+            minio_path += f"{self.sql_run.run_id}_{self.sql_run.uuid}"
+            minio_path += "/data.zarr"
+            print(f"Loading dataset from MinIO path: {minio_path}")
+            store = inspector.minio_filesystem.get_mapper(minio_path)
+            dataset = xr.open_zarr(store, consolidated=True)
+        return dataset
     def load_sweep_dict(self):
         """
         Load the sweep dictionary from the dataset
@@ -59,17 +84,17 @@ class Run:
             sweep_dict (dict): Dictionary with sweep information
             is_together (bool): True if all sweeps are together, False otherwise
         """
-        if "parallel_sweep_axes" in self.dataset.metadata:
-            conf = self.dataset.metadata["parallel_sweep_axes"]
-            conf = conf.replace("'", '"')  # Ensure JSON compatibility
-            print( conf)
-            conf = json.loads(conf)
-            self.parallel_sweep_axes = {int(i): sweeps for i, sweeps in conf.items()}
-            self.together_sweeps = True
-        else:
-            dims = self.full_data_set.dims
-            self.parallel_sweep_axes = {i: [dim] for i, dim in enumerate(dims)}
-            self.together_sweeps = False
+        # if "parallel_sweep_axes" in self.dataset.metadata:
+        #     conf = self.dataset.metadata["parallel_sweep_axes"]
+        #     conf = conf.replace("'", '"')  # Ensure JSON compatibility
+        #     print( conf)
+        #     conf = json.loads(conf)
+        #     self.parallel_sweep_axes = {int(i): sweeps for i, sweeps in conf.items()}
+        #     self.together_sweeps = True
+        # else:
+        dims = self.full_data_set.dims
+        self.parallel_sweep_axes = {i: [dim] for i, dim in enumerate(dims)}
+        self.together_sweeps = False
         self.sweep_dict = {
             i: Dim(names[0]) for i, names in self.parallel_sweep_axes.items()
             }
@@ -185,9 +210,10 @@ class Run:
         if selection in ['x-axis', 'y-axis']:
             old_dim = self.dim_axis_option[selection]
             self.dim_axis_option[selection] = dim
-            if old_dim is not None:
+            if old_dim:
                 # Set previous dim (having this option) to 'select_value'
-                # Required since x and y axis ahve to be unique
+                # Required since x and y axis have to be unique
+                print(old_dim)
                 print(f"Updating {old_dim.name} to {dim.name} on {selection}")
                 if old_dim.option in ['x-axis', 'y-axis']:
                     self.dim_axis_option['select_value'].append(old_dim)
@@ -236,3 +262,87 @@ class Run:
             )
         print(f"{self.plot_selection= }")
         build_xarray_grid()
+
+from sqlalchemy.orm import (
+    DeclarativeBase, Mapped, mapped_column, relationship
+)
+
+import uuid
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+
+class Base(DeclarativeBase):
+    pass
+
+class SqlRun(Base):
+    __tablename__ = "runs"
+
+    ### Run metadata
+    run_id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(
+        UUID(as_uuid=True), default=uuid.uuid4, unique=True, nullable=False)
+    exp_id: Mapped[int] = mapped_column(ForeignKey("experiments.exp_id"))
+    experiment = relationship("SqlExperiment", back_populates="runs")
+    device_id = mapped_column(ForeignKey("devices.device_id"))
+    device = relationship("SqlDevice", back_populates="runs")
+    name: Mapped[str] = mapped_column(String)
+
+    setup: Mapped[str] = mapped_column(String)
+
+    ### Data specific to this run
+    result_count: Mapped[int] = mapped_column(Integer, default=0)
+    batch_count: Mapped[int] = mapped_column(Integer, default=0)
+    coords: Mapped[list[str]] = mapped_column(ARRAY(String))
+    sweeps: Mapped[dict[int, list[str]]] = mapped_column(JSONB)
+
+    ### Timestamps and status
+    start_time: Mapped[int] = mapped_column(BigInteger)
+    completed_time: Mapped[int] = mapped_column(
+        BigInteger, default=None, nullable=True)
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    measurement_exception: Mapped[str] = mapped_column(
+        Text, default=None, nullable=True)
+    parent_datasets: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer), default=None, nullable=True)
+
+class SqlExperiment(Base):
+    __tablename__ = "experiments"
+
+    exp_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    creation_time: Mapped[int] = mapped_column(BigInteger)
+    #run_counter: Mapped[int] = mapped_column(Integer)
+    #format_string: Mapped[str] = mapped_column(String)
+
+    runs: Mapped[list[SqlRun]] = relationship(
+        "SqlRun", back_populates="experiment", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_experiment_name"),
+    )
+
+    def __repr__(self) -> str:
+        return (f"<Experiment(exp_id={self.exp_id}, name='{self.name}', "
+                f"creation_time={self.creation_time}> ")
+
+class SqlDevice(Base):
+    __tablename__ = "devices"
+
+    device_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    runs: Mapped[list[SqlRun]] = relationship("SqlRun", back_populates="device")
+
+    def __repr__(self) -> str:
+        return f"<Device(device_id={self.device_id}, name='{self.name}')>"
