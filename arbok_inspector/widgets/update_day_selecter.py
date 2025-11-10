@@ -8,8 +8,10 @@ def update_day_selecter(day_grid):
     offset_hours = app.storage.general["timezone"]
     if inspector.database_type == 'qcodes':
         rows = get_qcodes_days(inspector.cursor, offset_hours)
-    else:
+    elif inspector.database_type == 'native_arbok':
         rows = get_native_arbok_days(inspector.database_engine,offset_hours)
+    else:
+        raise ValueError(f"Invalid database type: {inspector.database_type}")
 
     day_grid.clear()
     row_data = []
