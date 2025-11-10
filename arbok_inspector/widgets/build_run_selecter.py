@@ -11,7 +11,7 @@ med_col_width = 60
 QCODES_RUN_GRID_COLUMN_DEFS = [
     {'headerName': 'Run ID', 'field': 'run_id', "width": small_col_width},
     {'headerName': 'Name', 'field': 'name'},
-    {'headerName': 'Exp ID', 'field': 'exp_id', "width": small_col_width},
+    {'headerName': 'Experiment', 'field': 'experiment_name'},
     {'headerName': '# Results', 'field': 'result_counter', "width": small_col_width},
     {'headerName': 'Started', 'field': 'run_timestamp', "width": small_col_width},
     {'headerName': 'Finish', 'field': 'completed_timestamp', "width": small_col_width},
@@ -70,9 +70,6 @@ def build_run_selecter(target_day):
                 'cellClicked',
                 lambda event: open_run_page(event.args['data']['run_id'])
             )
-    #run_grid.options['rowData'] = run_grid_rows
-    #run_grid.update()
-
     ui.notify(
         'Run selector updated: \n'
         f'found {len(run_grid_rows)} run(s)',
@@ -83,27 +80,36 @@ def build_run_selecter(target_day):
     )
 
 def get_qcodes_runs_for_day(
-    cursor, target_day: str, offset_hours: float) -> list[dict]:
+    cursor, target_day: str, offset_hours: float
+) -> list[dict]:
     """
-    Fetch runs from a QCoDeS database
-    Args:
-        cursor: SQLite cursor connected to the database
-        target_day (str): The target day in 'YYYY-MM-DD'
-        offset_hours (float): The timezone offset in hours
-    Returns:
-        list[dict]: List of runs as dictionaries
+    Fetch runs from a QCoDeS (SQLite) database, joined with experiments,
+    excluding the 'qua_program' and 'snapshot' columns entirely.
     """
-    cursor.execute(
-        f"""
-        SELECT *
-        FROM runs
-        WHERE DATE(datetime(run_timestamp, 'unixepoch', '{offset_hours} hours')) = ?
-        ORDER BY run_timestamp;
-        """,
-        (target_day,),
-    )
+    hours = int(offset_hours)
+    minutes = int((offset_hours - hours) * 60)
+    offset_str = f"{'+' if offset_hours >= 0 else '-'}{abs(hours):02d}:{abs(minutes):02d}"
+
+    # get all columns except the ones we want to exclude
+    exclude_columns = {'qua_program', 'snapshot'}
+    cursor.execute("PRAGMA table_info(runs)")
+    all_columns = [col['name'] for col in cursor.fetchall() if col['name'] not in exclude_columns]
+
+    # construct SELECT statement
+    columns_str = ", ".join(f"r.{col}" for col in all_columns)
+
+    query = f"""
+        SELECT {columns_str}, e.name AS experiment_name
+        FROM runs r
+        JOIN experiments e ON r.exp_id = e.exp_id
+        WHERE DATE(datetime(r.run_timestamp, 'unixepoch', '{offset_str}')) = ?
+        ORDER BY r.run_timestamp;
+    """
+
+    cursor.execute(query, (target_day,))
     rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    row_dicts = [dict(row) for row in rows]
+    return row_dicts
      
 NATIVE_COLUMNS = {
     'run_id': 'run ID',
