@@ -137,20 +137,3 @@ def build_day_selecter(grids):
                 handler = lambda event: build_run_selecter(event.args["value"])
             )
         update_day_selecter(grids['day'])
-
-# def build_run_selecter(grids):
-#     """Build the run selecter grid."""
-#     app.storage.tab['run_selecter'] = ui.column().classes('flex-1').classes('h-full')
-#         # app.storage.tab['run_selecter'] = ui.aggrid(
-#         #     {
-#         #         'defaultColDef': {'flex': 1},
-#         #         'columnDefs': RUN_GRID_COLUMN_DEFS,
-#         #         'rowData': {},
-#         #         'rowSelection': 'multiple',
-#         #     },
-#         # ).classes('ag-theme-balham-dark').style(
-#         #     AGGRID_STYLE
-#         # ).on(
-#         #     'cellClicked',
-#         #     lambda event: open_run_page(event.args['data']['run_id'])
-#         # )
