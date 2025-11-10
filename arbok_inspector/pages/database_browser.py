@@ -1,10 +1,10 @@
 import time
 from nicegui import ui, app
+
 from arbok_inspector.state import inspector
 from arbok_inspector.pages.run_view import run_page
 from arbok_inspector.widgets.update_day_selecter import update_day_selecter
-from arbok_inspector.widgets.update_run_selecter import update_run_selecter
-from arbok_inspector.classes.run import Run
+from arbok_inspector.widgets.build_run_selecter import build_run_selecter
 
 DAY_GRID_COLUMN_DEFS = [
     {'headerName': 'Day', 'field': 'day'},
@@ -19,23 +19,21 @@ RUN_GRID_COLUMN_DEFS = [
     {'headerName': 'Started', 'field': 'run_timestamp', "width": small_col_width},
     {'headerName': 'Finish', 'field': 'completed_timestamp', "width": small_col_width},
 ]
-RUN_PARAM_DICT = {
-    'run_id': 'Run ID',
-    'exp_id': 'Experiment ID',
-    'result_counter': '# results',
-    'run_timestamp': 'Started',
-    'completed_timestamp': 'Completed',
-}
+# RUN_PARAM_DICT = {
+#     'run_id': 'Run ID',
+#     'exp_id': 'Experiment ID',
+#     'result_counter': '# results',
+#     'run_timestamp': 'Started',
+#     'completed_timestamp': 'Completed',
+# }
 AGGRID_STYLE = 'height: 95%; min-height: 0;'
 EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start'
-
-shared_data = {}
 
 @ui.page('/browser')
 async def database_browser_page():
     """Database general page showing the selected database"""
     _ = await ui.context.client.connected()
-    app.storage.general["avg_axis"] = None
+    app.storage.general["avg_axis"] = 'iteration'
     app.storage.general["result_keywords"] = None
     app.storage.tab["avg_axis_input"] = None
     app.storage.tab["result_keyword_input"] = None
@@ -56,7 +54,8 @@ async def database_browser_page():
 
         with ui.row().classes('w-full flex-1'):
             build_day_selecter(grids)
-            build_run_selecter(grids)
+            app.storage.tab['run_selecter'] = ui.column().classes('flex-1').classes('h-full')
+            build_run_selecter(target_day = None)
 
 def open_run_page(run_id: int):
     # with ui.dialog() as dialog, ui.card():
@@ -135,25 +134,23 @@ def build_day_selecter(grids):
             .style(AGGRID_STYLE)\
             .on(
                 type = 'cellClicked',
-                handler = lambda event: update_run_selecter(
-                    grids['run'], event.args["value"], RUN_GRID_COLUMN_DEFS)
+                handler = lambda event: build_run_selecter(event.args["value"])
             )
         update_day_selecter(grids['day'])
 
-def build_run_selecter(grids):
-    """Build the run selecter grid."""
-    with ui.column().classes('flex-1').classes('h-full'):
-        grids['run'] = ui.aggrid(
-            {
-                'defaultColDef': {'flex': 1},
-                'columnDefs': RUN_GRID_COLUMN_DEFS,
-                'rowData': {},
-                'rowSelection': 'multiple',
-            },
-            #theme = 'ag-theme-balham-dark'
-        ).classes('ag-theme-balham-dark').style(
-            AGGRID_STYLE
-        ).on(
-            'cellClicked',
-            lambda event: open_run_page(event.args['data']['run_id'])
-        )
+# def build_run_selecter(grids):
+#     """Build the run selecter grid."""
+#     app.storage.tab['run_selecter'] = ui.column().classes('flex-1').classes('h-full')
+#         # app.storage.tab['run_selecter'] = ui.aggrid(
+#         #     {
+#         #         'defaultColDef': {'flex': 1},
+#         #         'columnDefs': RUN_GRID_COLUMN_DEFS,
+#         #         'rowData': {},
+#         #         'rowSelection': 'multiple',
+#         #     },
+#         # ).classes('ag-theme-balham-dark').style(
+#         #     AGGRID_STYLE
+#         # ).on(
+#         #     'cellClicked',
+#         #     lambda event: open_run_page(event.args['data']['run_id'])
+#         # )
