@@ -17,7 +17,7 @@ import xarray as xr
 
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
-from arbok_inspector.state import inspector
+from arbok_inspector.state import ArbokInspector, inspector
 
 if TYPE_CHECKING:
     from qcodes.dataset.data_set import DataSet
@@ -38,7 +38,7 @@ class BaseRun(ABC):
         """
         self.run_id: int = run_id
         self.title: str = f'Run ID: {run_id}  (-> add experiment)'
-
+        self.inspector: ArbokInspector =  inspector
         self._database_columns = self._get_database_columns()
         self.full_data_set: Dataset = self._load_dataset()
         self.last_subset: Dataset = self.full_data_set
