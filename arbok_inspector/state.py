@@ -54,6 +54,7 @@ class ArbokInspector:
                 ui.notify('File does not exist', type='negative')
         except Exception as ex:
             ui.notify(f'Error: {str(ex)}', type='negative')
+        self.database_type = 'qcodes'
     
     def connect_to_arbok_database(
         self,
@@ -98,24 +99,3 @@ class ArbokInspector:
         ui.navigate.to('/browser')
     
 inspector = ArbokInspector()
-# inspector.qcodes_database_path = 'test.db'  # For development purposes only
-# inspector.connect_qcodes_database()
-
-from sqlalchemy import create_engine
-from fsspec import filesystem
-minio_url = "http://localhost:9000"
-minio_user = "minioadmin"
-minio_password = "minioadmin"
-
-
-inspector.database_type = 'native_arbok'  # For development purposes only
-inspector.database_engine = create_engine(
-    'postgresql+psycopg2://nixos@localhost:5432/postgres'
-)
-inspector.minio_bucket = "dev"
-inspector.minio_filesystem = filesystem(
-        protocol = "s3",
-        client_kwargs={"endpoint_url": minio_url},
-        key=minio_user,
-        secret=minio_password
-        )
