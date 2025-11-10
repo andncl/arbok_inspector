@@ -12,12 +12,16 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "jupyterlab>=4.4.8",
+    "minio ~= 7.2",
     "nicegui>=2.24.2",
     "nodejs>=0.1.1",
     "plotly>=6.3.0",
+    "psycopg2-binary ~= 2.9",
+    "s3fs~=2025.9",
+    "SQLAlchemy ~= 2.0",
     "qcodes>=0.53.0",
     "xarray>=2025.9.0",
+    "zarr ~= 2.18"
 ]
 dynamic = ["version"]
 

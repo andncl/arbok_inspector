@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING
 from nicegui import ui, app
 
 if TYPE_CHECKING:
-    from arbok_inspector.classes.run import Run
+    from arbok_inspector.arbok_inspector.classes.base_run import BaseRun
     from xarray import Dataset
 
 def build_xarray_html():
     """Display the xarray dataset in a dark-themed style."""
-    run: Run = app.storage.tab["run"]
+    run: BaseRun = app.storage.tab["run"]
     ds: Dataset = run.full_data_set
     with ui.column().classes('w-full'):
         ui.html('''
