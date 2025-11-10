@@ -1,0 +1,157 @@
+from datetime import datetime, timedelta
+
+from nicegui import ui, app
+from sqlalchemy import text
+
+from arbok_inspector.state import inspector
+
+small_col_width = 50
+med_col_width = 60
+
+QCODES_RUN_GRID_COLUMN_DEFS = [
+    {'headerName': 'Run ID', 'field': 'run_id', "width": small_col_width},
+    {'headerName': 'Name', 'field': 'name'},
+    {'headerName': 'Exp ID', 'field': 'exp_id', "width": small_col_width},
+    {'headerName': '# Results', 'field': 'result_counter', "width": small_col_width},
+    {'headerName': 'Started', 'field': 'run_timestamp', "width": small_col_width},
+    {'headerName': 'Finish', 'field': 'completed_timestamp', "width": small_col_width},
+]
+NATIVE_RUN_GRID_COLUMN_DEFS = [
+    {'headerName': 'Run ID', 'field': 'run_id', "width": small_col_width},
+    {'headerName': 'Name', 'field': 'name'},
+    {'headerName': 'Experiment', 'field': 'experiment'},
+    {'headerName': '# results', 'field': 'result_count', "width": med_col_width},
+    {'headerName': '# batches', 'field': 'batch_count', "width": med_col_width},
+    {'headerName': 'started', 'field': 'start_time', "width": med_col_width},
+    {'headerName': 'last result', 'field': 'completed_time', "width": med_col_width},
+]
+AGGRID_STYLE = 'height: 95%; min-height: 0;'
+
+def build_run_selecter(target_day):
+    container = app.storage.tab['run_selecter']
+    container.clear()
+
+    offset_hours = app.storage.general["timezone"]
+    run_grid_rows = []
+    print(f"Showing runs from {target_day}")
+    if inspector.database_type == 'qcodes':
+        rows = get_qcodes_runs_for_day(inspector.cursor, target_day, offset_hours)
+        column_defs = QCODES_RUN_GRID_COLUMN_DEFS
+    else:
+        rows = get_native_arbok_runs_for_day(inspector.database_engine, target_day, offset_hours)
+        column_defs = NATIVE_RUN_GRID_COLUMN_DEFS
+    run_grid_rows = []
+    columns = [x['field'] for x in column_defs]
+    for run in rows:
+        run_dict = {}
+        for key in columns:
+            if key in run:
+                value = run[key]
+                if 'time' in key:
+                    if value is not None:
+                        local_dt = datetime.utcfromtimestamp(value)
+                        local_dt += timedelta(hours=offset_hours)
+                        value = local_dt.strftime('%H:%M:%S')
+                    else:
+                        value = 'N/A'
+                run_dict[key] = value
+        run_grid_rows.insert(0, run_dict)
+    with container:
+        ui.aggrid(
+                {
+                    'defaultColDef': {'flex': 1},
+                    'columnDefs': column_defs,
+                    'rowData': run_grid_rows,
+                    'rowSelection': 'multiple',
+                },
+            ).classes('ag-theme-balham-dark').style(
+                AGGRID_STYLE
+            ).on(
+                'cellClicked',
+                lambda event: open_run_page(event.args['data']['run_id'])
+            )
+    #run_grid.options['rowData'] = run_grid_rows
+    #run_grid.update()
+
+    ui.notify(
+        'Run selector updated: \n'
+        f'found {len(run_grid_rows)} run(s)',
+        type='positive',
+        multi_line=True,
+        classes='multi-line-notification',
+        position = 'top-right'
+    )
+
+def get_qcodes_runs_for_day(
+    cursor, target_day: str, offset_hours: float) -> list[dict]:
+    """
+    Fetch runs from a QCoDeS database
+    Args:
+        cursor: SQLite cursor connected to the database
+        target_day (str): The target day in 'YYYY-MM-DD'
+        offset_hours (float): The timezone offset in hours
+    Returns:
+        list[dict]: List of runs as dictionaries
+    """
+    cursor.execute(
+        f"""
+        SELECT *
+        FROM runs
+        WHERE DATE(datetime(run_timestamp, 'unixepoch', '{offset_hours} hours')) = ?
+        ORDER BY run_timestamp;
+        """,
+        (target_day,),
+    )
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+     
+NATIVE_COLUMNS = {
+    'run_id': 'run ID',
+    'name': 'name',
+    'result_count': '# results',
+    'batch_count': '# batches',
+    'start_time': 'started',
+    'completed_time': 'last result',
+    'is_completed': 'completed'
+}
+
+def get_native_arbok_runs_for_day(
+    engine,
+    target_day: str,
+    offset_hours: float) -> list[dict]:
+    """
+    Fetch runs from a native Arbok database
+    
+    Args:
+        engine: SQLAlchemy engine connected to the database
+        target_day (str): The target day in 'YYYY-MM-DD'
+        offset_hours (float): The timezone offset in hours
+    Returns:
+        list[dict]: List of runs as dictionaries
+    """
+    query = text("""
+        SELECT r.*, e.name AS experiment_name
+        FROM runs r
+        JOIN experiments e ON r.exp_id = e.exp_id
+        WHERE (to_timestamp(r.start_time) + (:offset_hours || ' hours')::interval)::date = :target_day
+        ORDER BY r.start_time;
+    """)
+
+    with engine.connect() as conn:
+        result = conn.execute(
+            query, {"offset_hours": offset_hours, "target_day": target_day}
+        )
+        runs_filtered = [
+            {**{col: row[col] for col in NATIVE_COLUMNS.keys()},
+            "experiment": row["experiment_name"]}
+            for row in result.mappings()
+        ]
+
+    return runs_filtered
+
+def open_run_page(run_id: int):
+    app.storage.general["avg_axis"] = app.storage.tab["avg_axis_input"].value
+    app.storage.general["result_keywords"] = app.storage.tab["result_keyword_input"].value
+    print(f"Result Keywords:")
+    print(app.storage.general['result_keywords'])
+    ui.navigate.to(f'/run/{run_id}', new_tab=True)
