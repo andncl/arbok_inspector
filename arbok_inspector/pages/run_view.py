@@ -1,16 +1,21 @@
 """Run view page showing the data and plots for a specific run"""
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from datetime import datetime, timedelta
 import json
+import os
 import importlib.resources as resources
 
 from nicegui import ui, app
 
+from arbok_inspector.state import inspector
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
 from arbok_inspector.widgets.build_xarray_html import build_xarray_html
-from arbok_inspector.widgets.json_plot_settings_dialog import JsonPlotSettingsDialog
+from arbok_inspector.widgets.build_run_view_actions import build_run_view_actions
 from arbok_inspector.helpers.unit_formater import unit_formatter
-from arbok_inspector.classes.run import Run
+from arbok_inspector.classes.qcodes_run import QcodesRun
+from arbok_inspector.classes.native_run import NativeRun
+
 
 from arbok_inspector.classes.dim import Dim
 
@@ -24,8 +29,8 @@ RUN_TABLE_COLUMNS = [
 
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
 
-EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start'
-
+EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start pt-0 mt-0'
+TITLE_CLASSES = 'text-lg font-semibold'
 
 @ui.page('/run/{run_id}')
 async def run_page(run_id: str):
@@ -37,8 +42,17 @@ async def run_page(run_id: str):
     """
     ui.page_title(f"{run_id}")
     _ = await ui.context.client.connected()
-    # run = app.storage.general["run"] # Run(int(run_id))
-    run = Run(int(run_id))
+    if 'run' in app.storage.tab:
+        print('run already exists!')
+    if inspector.database_type == 'qcodes':
+        run = QcodesRun(int(run_id))
+    elif 'arbok_native':
+        run = NativeRun(int(run_id))
+    else:
+        raise ValueError(
+            "Database type must be 'qcodes' or 'arbok_native is:"
+            f"{inspector.database_type}")
+    
 
     app.storage.tab["placeholders"] = {'plots': None}
     app.storage.tab["run"] = run
@@ -47,91 +61,75 @@ async def run_page(run_id: str):
     with resources.files("arbok_inspector.configurations").joinpath("2d_plot.json").open("r") as f:
         app.storage.tab["plot_dict_2D"] = json.load(f)
 
-    ui.label(f'Run Page for ID: {run_id}').classes('text-2xl font-bold')
-    with ui.column().classes('w-full gap-1'):
-        with ui.expansion('Coordinates and results', icon='checklist', value=True)\
-            .classes(EXPANSION_CLASSES).props('expand-separator'):
-            with ui.row().classes('w-full gap-4 no-wrap items-start'):
-                with ui.column().classes('w-2/3 gap-2'):
-                    ui.label("Coordinates:").classes('text-lg font-semibold')
-                    for i, _ in run.parallel_sweep_axes.items():
-                        add_dim_dropdown(sweep_idx = i)
-                with ui.column().classes('w-1/3 gap-2'):
-                    ui.label("Results:").classes('text-lg font-semibold')
-                    for i, result in enumerate(run.full_data_set):
-                        value = False
-                        if result in run.plot_selection:
-                            value = True
-                        ui.checkbox(
-                            text = result.replace("__", "."),
-                            value = value,
-                            on_change = lambda e, r=result: run.update_plot_selection(e.value, r),
-                        ).classes('text-sm h-4').props('color=purple')
-        with ui.expansion('Plots', icon='stacked_line_chart', value=True)\
-            .classes(EXPANSION_CLASSES):
-            with ui.row().classes('w-full p-2 gap-2 items-center rounded-md border border-neutral-600 bg-neutral-800 text-sm'):
+    ui.label(f'Run-ID: {run_id}').classes('text-2xl font-bold')
+    with ui.row().classes('w-full gap-4'):
+        with ui.column().classes('flex-none'):
+            with ui.card().classes('w-full gap-2'):
+                ui.label("Coordinates:").classes('text-lg font-semibold pl-2')
+                ui.separator().classes('w-full my-1')
+                for i, _ in run.parallel_sweep_axes.items():
+                    add_dim_dropdown(sweep_idx = i)
+            with ui.card().classes('w-full gap-2'):
+                ui.label("Results:").classes(TITLE_CLASSES)
+                for i, result in enumerate(run.full_data_set):
+                    value = False
+                    if result in run.plot_selection:
+                        value = True
+                    ui.checkbox(
+                        text = result.replace("__", "."),
+                        value = value,
+                        on_change = lambda e, r=result: run.update_plot_selection(e.value, r),
+                    ).classes('text-sm h-4').props('color=purple')
+            with ui.card().classes('w-full gap-2'):
+                ui.label("Actions:").classes(TITLE_CLASSES)
+                build_run_view_actions()
+            with ui.expansion('Run info', icon = 'info').classes('w-full gap-2'):
+                # ui.label("Run info:").classes(TITLE_CLASSES)
+                for column_name, conf in run.database_columns.items():
+                    value = str(conf['value'])
+                    if len(value) > 20 or value is None:
+                        continue
+                    print(column_name, type(value))
+                    if 'label' in conf:
+                        label = ui.label(f"{conf['label']}: ")
+                    else:
+                        label = ui.label(f"{column_name.upper()}: ")
+                    label.classes('font-semibold m-0 p-0"')
+                    ui.label(value).classes("m-0 p-0 ml-5")
+
+        with ui.column().classes('flex-1 min-w-0'):
+            with ui.expansion('Plots', icon='stacked_line_chart', value=True)\
+                .classes(EXPANSION_CLASSES):
+                app.storage.tab["placeholders"]["plots"] = ui.row().\
+                    classes('w-full min-h-[50vh] p-1 items-stretch')
+                build_xarray_grid()
+
+                    #.style('line-height: 1rem; padding-top: 0; padding-bottom: 0;')
+            with ui.expansion('xarray summary', icon='summarize', value=False)\
+                .classes(EXPANSION_CLASSES):
+                build_xarray_html()
+            with ui.expansion('analysis', icon='science', value=False)\
+                .classes(EXPANSION_CLASSES):
+                with ui.row():
+                    ui.label("Working on it!  -Andi").classes(TITLE_CLASSES)
+            with ui.expansion('metadata', icon='numbers', value=False)\
+                .classes(f"{EXPANSION_CLASSES}  overflow-x-auto"):
+                placeholder_metadata = {}
                 
+                placeholder_metadata['code'] = ui.code(
+                    content = 'Placeholder for QUA program',
+                    language = 'python')\
+                    .classes('w-full overflow-x-auto whitespace-pre')
                 ui.button(
-                    text='Update',
-                    icon='refresh',
-                    color='green',
-                    on_click=lambda: build_xarray_grid(),
-                ).classes('h-8 px-2')
-
+                    icon = 'code',
+                    text="load qua program",
+                    on_click = lambda: load_qua_code(run, placeholder_metadata),
+                )
                 ui.button(
-                    text='Debug',
-                    icon='info',
-                    color='red',
-                    on_click=lambda: print_debug(run),
-                ).classes('h-8 px-2')
-
-                dialog_1d = JsonPlotSettingsDialog('plot_dict_1D')
-                dialog_2d = JsonPlotSettingsDialog('plot_dict_2D')
-
-                ui.button(
-                    text='1D settings',
-                    color='pink',
-                    on_click=dialog_1d.open,
-                ).classes('h-8 px-2')
-
-                ui.button(
-                    text='2D settings',
-                    color='orange',
-                    on_click=dialog_2d.open,
-                ).classes('h-8 px-2')
-
-                ui.number(
-                    label='# per col',
-                    value=2,
-                    format='%.0f',
-                    on_change=lambda e: set_plots_per_column(e.value),
-                ).props('dense outlined').classes('w-20 h-8 text-xs mb-2')
-                ui.button(
-                    icon = 'file_download',
-                    text = 'full dataset',
-                    color = 'blue',
-                    on_click=download_full_dataset,
-                ).classes('h-8 px-2')
-                ui.button(
-                    icon = 'file_download',
-                    text = 'data selection',
-                    color='darkblue',
-                    on_click=download_data_selection,
-                ).classes('h-8 px-2')
-                #.style('line-height: 1rem; padding-top: 0; padding-bottom: 0;')
-            app.storage.tab["placeholders"]["plots"] = ui.row().classes('w-full p-4')
-            build_xarray_grid()
-        with ui.expansion('xarray summary', icon='summarize', value=False)\
-            .classes(EXPANSION_CLASSES):
-            build_xarray_html()
-        with ui.expansion('analysis', icon='science', value=False)\
-            .classes(EXPANSION_CLASSES):
-            with ui.row():
-                ui.label("Working on it!  -Andi").classes('text-lg font-semibold')
-        with ui.expansion('metadata', icon='numbers', value=False)\
-            .classes(EXPANSION_CLASSES):
-            ui.row().classes('w-full p-4')
-                
+                    icon = 'download',
+                    text="download serialized qua program",
+                    on_click = lambda: download_qua_code(run),
+                )
 
 def add_dim_dropdown(sweep_idx: int):
     """
@@ -141,28 +139,29 @@ def add_dim_dropdown(sweep_idx: int):
         sweep_idx (int): Index of the sweep to add the dropdown for
     """
     run = app.storage.tab["run"]
-    width = 'w-1/2' if run.together_sweeps else 'w-full'
+    width = 'w-full'
     dim = run.sweep_dict[sweep_idx]
     local_placeholder = {"slider": None}
-    with ui.column().classes('w-full no-wrap items-center gap-1'):
-        ui_element = ui.select(
-            options = AXIS_OPTIONS,
-            value = str(dim.option),
-            label = f'{dim.name.replace("__", ".")}',
-            on_change = lambda e: update_dim_selection(
-                dim, e.value, local_placeholder["slider"])
-        ).classes(f"{width} text-sm m-0 p-0").props('dense')
-        dim.ui_selector = ui_element
-        if run.together_sweeps:
-            dims_names = run.parallel_sweep_axes[sweep_idx]
-            ui.radio(
-                options = dims_names,
-                value=dim.name,
-                on_change = lambda e: update_sweep_dim_name(dim, e.value)
-                ).classes(width).props('dense')
-        local_placeholder["slider"] = ui.column().classes('w-full')
-        if dim.option == 'select_value':
-            build_dim_slider(run, dim, local_placeholder["slider"])
+    #with ui.column().classes('w-full no-wrap items-center gap-1'):
+    dims_names = run.parallel_sweep_axes[sweep_idx]
+    #ui.separator().classes('w-full my-1')
+    # with ui.card().classes('w-full gap-1 px-2 py-2'):
+    ui.radio(
+        options = dims_names,
+        value=dim.name,
+        on_change = lambda e: update_sweep_dim_name(dim, e.value)
+        ).classes(f"{width}  text-xs m-0 p-0").props('dense')
+    ui_element = ui.select(
+        options = AXIS_OPTIONS,
+        value = str(dim.option),
+        label = f'{dim.name.replace("__", ".")}',
+        on_change = lambda e: update_dim_selection(
+            dim, e.value, local_placeholder["slider"])
+    ).classes(f"{width} text-sm m-0 p-0").props('dense')
+    dim.ui_selector = ui_element
+    local_placeholder["slider"] = ui.column().classes('w-full')
+    if dim.option == 'select_value':
+        build_dim_slider(run, dim, local_placeholder["slider"])
 
 def update_dim_selection(dim: Dim, value: str, slider_placeholder):
     """
@@ -226,19 +225,6 @@ def update_value_from_dim_slider(label, slider, dim: Dim, plot = True):
     if plot:
         build_xarray_grid()
 
-def set_plots_per_column(value: int):
-    """
-    Set the number of plots to display per column.
-
-    Args:
-        value (int): The number of plots per column
-    """
-    run = app.storage.tab["run"]
-    ui.notify(f'Setting plots per column to {value}', position='top-right')
-    run.plots_per_column = int(value)
-    build_xarray_grid()
-
-
 def update_sweep_dim_name(dim: Dim, new_name: str):
     """
     Update the name of the dimension in the sweep dict and the dim object.
@@ -252,29 +238,22 @@ def update_sweep_dim_name(dim: Dim, new_name: str):
     dim.ui_selector.label = new_name.replace("__", ".")
     build_xarray_grid()
 
-def print_debug(run: Run):
-    print("\nDebugging Run:")
-    for key, val in run.dim_axis_option.items():
-        if isinstance(val, list):
-            val_str = str([d.name for d in val])
-        elif isinstance(val, Dim):
-            val_str = val.name
-        else:
-            val_str = str(val)
-        print(f"{key}: \t {val_str}")
+def load_qua_code(run: Run, placeholder: dict):
+    """Load and display the QUA code for the given run."""
+    try:
+        qua_code = run.get_qua_code(as_string = True)
+        qua_code = qua_code.split("config = {")[0]
+        placeholder['code'].set_content(qua_code)
+    except Exception as e:
+        ui.notify(f'Error loading QUA code: {str(e)}', type='negative')
+        raise e
 
-def download_full_dataset():
-    """Download the full dataset as a NetCDF file."""
-    run = app.storage.tab["run"]
-    local_path = f'./run_{run.run_id}.nc'
-    run.full_data_set.to_netcdf(local_path)
-    ui.download.file(local_path)
-    os.remove(local_path)
-
-def download_data_selection():
-    """Download the current data selection as a NetCDF file."""
-    run = app.storage.tab["run"]
-    local_path = f'./run_{run.run_id}_selection.nc'
-    run.last_subset.to_netcdf(local_path)
-    ui.download.file(local_path)
-    os.remove(local_path)
+def download_qua_code(run: Run) -> None:
+    """Download the serialized QUA code for the given run."""
+    try:
+        qua_code_bytes = run.get_qua_code(as_string = False)
+        ui.download(qua_code_bytes, 'test.py')
+        #os.remove(file_name)
+    except Exception as e:
+        ui.notify(f'Error downloading QUA code: {str(e)}', type='negative')
+        raise e

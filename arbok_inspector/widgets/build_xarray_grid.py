@@ -14,7 +14,7 @@ from arbok_inspector.helpers.string_formaters import (
 
 if TYPE_CHECKING:
     from arbok_inspector.classes.dim import Dim
-    from arbok_inspector.classes.run import Run
+    from arbok_inspector.arbok_inspector.classes.base_run import BaseRun
     from plotly.graph_objs import Figure
 
 
@@ -80,7 +80,7 @@ def create_1d_plot(run: Run, ds: xr.Dataset, container: ui.Row) -> None:
 
     with container:
         fig = go.Figure(plot_dict)
-        ui.plotly(fig).classes('w-full').style('min-height: 400px;')
+        ui.plotly(fig).classes('flex-1 h-full w-full').style('height:100%; min-height:700px;')
         app.storage.tab["plot_dict_1D"] = plot_dict
 
 def create_2d_grid(run, ds, container) -> dict:
@@ -115,8 +115,9 @@ def create_2d_grid(run, ds, container) -> dict:
     def create_2d_plot(plot_idx):
         key = keys[plot_idx]
         da = ds[key]
-        if x_dim != da.dims[1]:
-            da = da.transpose(y_dim, x_dim)
+        if da[x_dim].dims[0] != da.dims[1]:
+            # TODO: CHECK THIS!
+            da = da.transpose() #y_dim, x_dim)
         plot_dict["data"][0]["z"] = da.values.tolist()
         plot_dict["data"][0]["x"] = da.coords[x_dim].values.tolist()
         plot_dict["data"][0]["y"] = da.coords[y_dim].values.tolist()
@@ -125,7 +126,7 @@ def create_2d_grid(run, ds, container) -> dict:
         return go.Figure(plot_dict)
 
     with container:
-        with ui.column().classes('w-full'):
+        with ui.column().classes('w-full h-full'):
             for row in range(num_rows):
                 with ui.row().classes('w-full justify-start flex-wrap'):
                     for col in range(num_columns):
@@ -133,9 +134,12 @@ def create_2d_grid(run, ds, container) -> dict:
                             break
                         fig = create_2d_plot(plot_idx)
                         width_percent = 100 / num_columns - 2
+                        height_percent = 100 / num_rows - 2
                         with ui.column().style(
                             f"width: {width_percent}%; box-sizing: border-box;"
+                            f"height: {height_percent}%; box-sizing: border-box;"
                             ):
-                            ui.plotly(fig).classes('w-full').style('min-height: 300px;')
+                            ui.plotly(fig).classes('w-full h-full')\
+                                .style(f'min-height: {int(800/num_rows)}px;')
                         plot_idx += 1
     app.storage.tab["plot_dict_2D"] = plot_dict

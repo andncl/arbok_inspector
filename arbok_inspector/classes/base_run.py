@@ -4,23 +4,28 @@ Run class representing a single run of the experiment.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from abc import ABC, abstractmethod
 import ast
 import re
+import io
 import json
 from qcodes.dataset import load_by_id
 from nicegui import ui, app
+import xarray as xr
+
+
 
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
-# from arbok_inspector.pages.database_browser import shared_data
+from arbok_inspector.state import ArbokInspector, inspector
 
 if TYPE_CHECKING:
     from qcodes.dataset.data_set import DataSet
     from xarray import Dataset
+
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
 
-
-class Run:
+class BaseRun(ABC):
     """
     Class representing a run with its data and methods
     """
@@ -33,11 +38,11 @@ class Run:
         """
         self.run_id: int = run_id
         self.title: str = f'Run ID: {run_id}  (-> add experiment)'
-        self.dataset: DataSet = load_by_id(run_id)
-        self.full_data_set: Dataset = self.dataset.to_xarray_dataset()
+        self.inspector: ArbokInspector =  inspector
+        self._database_columns = self._get_database_columns()
+        self.full_data_set: Dataset = self._load_dataset()
         self.last_subset: Dataset = self.full_data_set
 
-        self.together_sweeps: bool = False
         self.parallel_sweep_axes: dict = {}
         self.sweep_dict: dict[int, Dim] = {}
         self.load_sweep_dict()
@@ -51,6 +56,38 @@ class Run:
         print(f"Initial plot selection: {self.plot_selection}")
         self.plots_per_column: int = 2
 
+    @property
+    def database_columns(self) -> dict[str, dict[str, str]]:
+        """Column names of database, with their values and shown labels"""
+        return self._database_columns
+
+    @abstractmethod
+    def _get_database_columns(self) -> dict[str, dict[str, str]]:
+        pass
+
+    @abstractmethod
+    def _load_dataset(self) -> Dataset:
+        """
+        Load the dataset for the given run ID from the appropriate database type.
+        
+        Args:
+            run_id (int): ID of the run
+            database_type (str): Type of the database ('qcodes' or 'arbok')
+        Returns:
+            DataSet: Loaded dataset
+        """
+        pass
+
+    @abstractmethod
+    def get_qua_code(self, as_string: bool = False) -> str:
+        """
+        Retrieve the QUA code associated with this run.
+
+        Returns:
+            qua_code (str): The QUA code as a string
+        """
+        pass
+
     def load_sweep_dict(self):
         """
         Load the sweep dictionary from the dataset
@@ -59,21 +96,15 @@ class Run:
             sweep_dict (dict): Dictionary with sweep information
             is_together (bool): True if all sweeps are together, False otherwise
         """
-        if "parallel_sweep_axes" in self.dataset.metadata:
-            conf = self.dataset.metadata["parallel_sweep_axes"]
-            conf = conf.replace("'", '"')  # Ensure JSON compatibility
-            print( conf)
-            conf = json.loads(conf)
-            self.parallel_sweep_axes = {int(i): sweeps for i, sweeps in conf.items()}
-            self.together_sweeps = True
-        else:
-            dims = self.full_data_set.dims
-            self.parallel_sweep_axes = {i: [dim] for i, dim in enumerate(dims)}
-            self.together_sweeps = False
+        self.parallel_sweep_axes = {}
+        dims = self.full_data_set.dims
+        for i, dim in enumerate(dims):
+            dependent_coords = [
+                name for name, coord in self.full_data_set.coords.items() if dim in coord.dims]
+            self.parallel_sweep_axes[i] = dependent_coords
         self.sweep_dict = {
             i: Dim(names[0]) for i, names in self.parallel_sweep_axes.items()
             }
-        print(self.sweep_dict)
         return self.sweep_dict
 
     def set_dim_axis_option(self):
@@ -90,6 +121,8 @@ class Run:
         options = {x: [] for x in AXIS_OPTIONS}
         print(f"Setting average to {app.storage.general['avg_axis']}")
         for dim in self.dims:
+            if app.storage.general["avg_axis"] is None:
+                break
             if app.storage.general["avg_axis"] in dim.name:
                 dim.option = 'average'
                 options['average'].append(dim)
@@ -120,6 +153,8 @@ class Run:
             keywords (list): List of keywords to search for
         Returns:
             selected_results (list): List of selected result names
+
+        TODO: simplify this! way too complicated
         """
         print(f"using keywords: {keywords}")
         if keywords is None or len(keywords) == 0 or keywords == '':
@@ -185,9 +220,10 @@ class Run:
         if selection in ['x-axis', 'y-axis']:
             old_dim = self.dim_axis_option[selection]
             self.dim_axis_option[selection] = dim
-            if old_dim is not None:
+            if old_dim:
                 # Set previous dim (having this option) to 'select_value'
-                # Required since x and y axis ahve to be unique
+                # Required since x and y axis have to be unique
+                print(old_dim)
                 print(f"Updating {old_dim.name} to {dim.name} on {selection}")
                 if old_dim.option in ['x-axis', 'y-axis']:
                     self.dim_axis_option['select_value'].append(old_dim)
@@ -236,3 +272,4 @@ class Run:
             )
         print(f"{self.plot_selection= }")
         build_xarray_grid()
+

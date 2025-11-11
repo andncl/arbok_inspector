@@ -14,7 +14,7 @@ def unit_formatter(run, dim, index: int) -> str:
         ('G', 1e9), ('M', 1e6), ('k', 1e3), ('m', 1e-3), ('µ', 1e-6), ('n', 1e-9)]
     try:
         value = run.full_data_set[dim.name].values[index]
-        unit = run.full_data_set[dim.name].unit
+        unit = run.full_data_set[dim.name].attrs['units']
         if abs(value) >= 1e3 or (abs(value) < 1e-3 and value != 0):
             for prefix, factor in unit_tuples:
                 if abs(value) >= factor or (abs(value) < 1e-3 and value != 0 and factor < 1):

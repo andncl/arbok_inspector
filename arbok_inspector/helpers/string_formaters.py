@@ -13,7 +13,7 @@ def title_formater(run):
     """
     title = ""
     for dim in run.dim_axis_option["select_value"]:
-        title += f"{dim.name } = {unit_formatter(run, dim, dim.select_index)}<br>"
+        title += f"{dim.name} = {unit_formatter(run, dim, dim.select_index)}<br>"
     return title
 
 def axis_label_formater(ds: xr.DataArray, dim_name: str) -> str:
@@ -27,7 +27,11 @@ def axis_label_formater(ds: xr.DataArray, dim_name: str) -> str:
     """
     dim_list = dim_name.split('__')
     print(f"{dim_list=}")
-    if len(dim_list) > 1:
-        return f"{'.'.join(dim_list[:-1])}.<b>{dim_list[-1]}</b> ({ds.coords[dim_name].unit})"
+    if 'units' in ds.coords[dim_name].attrs:
+        unit = ds.coords[dim_name].attrs['units']
     else:
-        return f"<b>{dim_list[0]}</b> ({ds.coords[dim_name].unit})"
+        unit = ""
+    if len(dim_list) > 1:
+        return f"{'.'.join(dim_list[:-1])}.<b>{dim_list[-1]}</b> ({unit})"
+    else:
+        return f"<b>{dim_list[0]}</b> ({unit})"
