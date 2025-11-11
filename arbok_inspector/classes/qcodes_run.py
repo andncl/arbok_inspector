@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import os
 from pathlib import Path
 
+from nicegui import ui
 from qcodes.dataset import load_by_id
 from qcodes.dataset.sqlite.database import get_DB_location
 from arbok_inspector.classes.base_run import BaseRun
@@ -51,15 +52,18 @@ class QcodesRun(BaseRun):
 
     def get_qua_code(self, as_string: bool = False) -> str | bytes:
         db_path = os.path.abspath(get_DB_location())
+        db_name = db_path.split('/')[-1].split('.db')[0]
         db_dir = os.path.dirname(db_path)
-        programs_dir = Path(db_dir) / "qua_programs/"
-        raise NotImplementedError
+        programs_dir = Path(db_dir) / f"qua_programs__{db_name}/"
+        program_dir = programs_dir / f"{self.run_id}.py"
+        #raise NotImplementedError
         ### TODO: IMPLEMENT MORE EASILY IN ARBOK THOUGH!
-        # if not os.path.isdir(programs_dir):
-        #     os.makedirs(programs_dir)
-        # try:
-        #     with open(save_path, 'r', encoding="utf-8") as file:
-        #         file.write(
-        #             generate_qua_script(qua_program, opx_config))
-        # except FileNotFoundError as e:
-        #     ui.notify(f"Qua program couldnt be found next to database: {e}")
+        try:
+            if not os.path.isdir(programs_dir):
+                os.makedirs(programs_dir)
+            with open(program_dir, 'r', encoding="utf-8") as file:
+                file_contents = file.read()
+        except FileNotFoundError as e:
+            ui.notify(f"Qua program couldnt be found next to database: {e}")
+            file_contents = ""
+        return file_contents
