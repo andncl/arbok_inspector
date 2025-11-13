@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import os
+import asyncio
 from nicegui import ui, app
 
 from arbok_inspector.widgets.json_plot_settings_dialog import JsonPlotSettingsDialog
@@ -11,57 +12,74 @@ if TYPE_CHECKING:
     from arbok_inspector.classes.dim import Dim
     from arbok_inspector.arbok_inspector.classes.base_run import BaseRun
 
-def build_run_view_actions() -> None:
-    with ui.column().classes():
-        with ui.row():
-            ui.button(
-                text='Update ',
-                icon='refresh',
-                color='green',
-                on_click=lambda: build_xarray_grid(),
-            ).props('dense')
+DEFAULT_REFRESH_INTERVAL_S = 0.5
 
-            ui.button(
-                text='Debug',
-                icon='info',
-                color='red',
-                on_click=lambda: print_debug(),
-            ).classes('h-8 px-2').props('dense')
-        with ui.row():
+def build_run_view_actions() -> None:
+    with ui.column().classes('items-start'):  # compact vertical layout
+        # --- Row 1: Update + Debug ---
+        with ui.row().classes('gap-2'):
+            ui.button('Update', icon='refresh', color='green',
+                    on_click=build_xarray_grid).props('dense')
+            ui.button('Debug', icon='info', color='red',
+                    on_click=print_debug).props('dense')
+
+        # --- Row 2: Settings buttons ---
+        with ui.row().classes('gap-2'):
             dialog_1d = JsonPlotSettingsDialog('plot_dict_1D')
             dialog_2d = JsonPlotSettingsDialog('plot_dict_2D')
 
-            ui.button(
-                text='1D settings',
-                color='pink',
-                on_click=dialog_1d.open,
-            ).props('dense')
+            ui.button('1D settings', color='pink',
+                    on_click=dialog_1d.open).props('dense')
+            ui.button('2D settings', color='orange',
+                    on_click=dialog_2d.open).props('dense')
 
-            ui.button(
-                text='2D settings',
-                color='orange',
-                on_click=dialog_2d.open,
-            ).props('dense')
+        # --- Row 3: Timer controls ---
+        with ui.row().classes('items-center gap-2'):
+            timer = ui.timer(
+                interval=DEFAULT_REFRESH_INTERVAL_S,
+                callback=build_xarray_grid,
+                active=False
+                )
+            ui.label('Auto-plot')
+            ui.switch(
+                on_change=lambda e: setattr(timer, 'active', e.value)
+            )
+            ui.number(
+                # label='(s)',
+                value=DEFAULT_REFRESH_INTERVAL_S,
+                min=0.1,
+                step=0.1,
+                format='%.1f',
+                on_change=lambda e: on_interval_change(e, timer),
+            ).props('dense suffix="s"').classes('w-12')
+        # --- Row 4: Plot layout control ---
+        with ui.row().classes('gap-2'):
+            ui.number(
+                label='# per col',
+                value=2,
+                format='%.0f',
+                on_change=lambda e: set_plots_per_column(e.value),
+            ).props('dense outlined').classes('w-24 h-8 text-xs')
 
-        ui.number(
-            label='# per col',
-            value=2,
-            format='%.0f',
-            on_change=lambda e: set_plots_per_column(e.value),
-        ).props('dense outlined').classes('w-20 h-8 text-xs mb-2')
-        with ui.row():
-            ui.button(
-                icon = 'file_download',
-                text = 'full',
-                color = 'blue',
-                on_click=download_full_dataset,
-            ).props('dense')
-            ui.button(
-                icon = 'file_download',
-                text = 'selection',
-                color='darkblue',
-                on_click=download_data_selection,
-            ).props('dense')
+        # --- Row 5: Download buttons ---
+        with ui.row().classes('gap-2'):
+            ui.button('Full', icon='file_download', color='blue',
+                    on_click=download_full_dataset).props('dense')
+            ui.button('Selection', icon='file_download', color='darkblue',
+                    on_click=download_data_selection).props('dense')
+
+def on_interval_change(e, timer):
+    try:
+        value = float(e.value)
+        if value < 0.1:
+            ui.notify('Interval must be at least 0.1 s', color='red')
+            e.sender.value = timer.interval  # revert
+            return
+        timer.interval = value
+        ui.notify(f'Refresh interval set to {value:.2f} s', color='green')
+    except ValueError:
+        ui.notify('Please enter a valid number', color='red')
+        e.sender.value = timer.interval  # revert
 
 def set_plots_per_column(value: int):
     """
