@@ -22,11 +22,12 @@ This is how arbok_inspector streamlines your data inspection:
 
 ## Installation 📲
 
-From pypi install using pip in your environment:
+[From pypi](https://pypi.org/project/arbok-inspector/) install using pip in your environment:
 ```bash
 pip install arbok-inspector
 ```
 Even better if you are using uv, a uv.lock file is included!
+
 Launch from CLI:
 ```bash
 arbok-inspector
