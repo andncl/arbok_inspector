@@ -30,8 +30,8 @@ version_scheme = "post-release"
 local_scheme = "no-local-version"
 
 [project.scripts]
-arbok-inspector-linux = "arbok_inspector.linux_run:run"
-arbok-inspector-windows = "arbok_inspector.windows_run:run"
+arbok-inspector = "arbok_inspector.main:run"
+arbok-inspector-dev = "arbok_inspector.dev:run"
 
 [tool.uv]
 package = true
