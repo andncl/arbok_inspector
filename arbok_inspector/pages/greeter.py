@@ -4,9 +4,7 @@ from arbok_inspector.state import inspector
 
 @ui.page('/')
 async def greeter_page() -> None:
-    """Main page that starts with file selection"""
-
-    # Show initial file selection dialog
+    """Main page that starts with database selection"""
     with ui.dialog().classes('width=800px') as dialog:
         dialog.props('persistent ') # width=800px max-width=90vw overflow-y-auto max-h-[90vh]
 
