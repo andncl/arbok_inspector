@@ -52,8 +52,10 @@ pip install -e .
 
 To launch the app in editable mode launch from dev.py file:
 ```bash
-python -m arbok_inspector/dev.py
+arbok-inspector-dev
 ```
+Note, this will likely not work on Windows! Try `python -m dev` while being in the arbok_inspector directory.
+
 Contributing & help 🙌
 
 Contributions, bug reports, and small feature requests are welcome. If you want to add a visualization or a new page, use `pages/` and `widgets/` for examples of how UI components are composed. When opening a PR, please keep changes focused and include a short description of how to exercise the change locally.
