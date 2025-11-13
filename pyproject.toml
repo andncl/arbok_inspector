@@ -30,7 +30,7 @@ version_scheme = "post-release"
 local_scheme = "no-local-version"
 
 [project.scripts]
-arbok-inspector = "arbok_inspector.main:ui.run"
+arbok-inspector = "arbok_inspector.main:run"
 
 [tool.uv]
 package = true
