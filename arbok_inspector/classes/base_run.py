@@ -55,6 +55,8 @@ class BaseRun(ABC):
         )
         print(f"Initial plot selection: {self.plot_selection}")
         self.plots_per_column: int = 2
+        self.plots: list = []
+        self.figures: list = []
 
     @property
     def database_columns(self) -> dict[str, dict[str, str]]:
@@ -146,7 +148,7 @@ class BaseRun(ABC):
                 print(f"Setting select_value to {dim.name}")
         return options
 
-    def select_results_by_keywords(self, keywords: list[str|tuple]) -> list[str]:
+    def select_results_by_keywords(self, keywords: str) -> list[str]:
         """
         Select results by keywords in their name.
         Args:
@@ -157,16 +159,16 @@ class BaseRun(ABC):
         TODO: simplify this! way too complicated
         """
         print(f"using keywords: {keywords}")
-        if keywords is None or len(keywords) == 0 or keywords == '':
-            return [next(iter(self.full_data_set.data_vars))]
-        s_quoted = re.sub(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', r'"\1"', keywords)
         try:
-            keywords = ast.literal_eval(s_quoted)
+            if len(keywords) == 0:
+                keywords = []
+            else:
+                keywords = ast.literal_eval(keywords)
         except (SyntaxError, ValueError):
-            print(f"Error parsing keywords: {s_quoted}")
+            print(f"Error parsing keywords: {keywords}")
             keywords = []
             ui.notify(
-                f"Error parsing result keywords: {s_quoted}. Please use a valid Python list.",
+                f"Error parsing result keywords: {keywords}. Please use a valid Python list.",
                 color='red',
                 position='top-right'
             )
@@ -240,6 +242,7 @@ class BaseRun(ABC):
         """
         # TODO: take the averaging out of this! We only want to average if necessary
         # averaging can be computationally intensive!
+        self.full_data_set: Dataset = self._load_dataset()
         sub_set = self.full_data_set
         for avg_axis in self.dim_axis_option['average']:
             sub_set = sub_set.mean(dim=avg_axis.name)
