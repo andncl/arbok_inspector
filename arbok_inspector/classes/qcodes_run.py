@@ -31,7 +31,7 @@ class QcodesRun(BaseRun):
         
     def _load_dataset(self) -> Dataset:
         dataset = load_by_id(self.run_id)
-        dataset = dataset.to_xarray_dataset()
+        dataset = dataset.to_xarray_dataset(use_multi_index = 'never')
         return dataset
 
     def _get_database_columns(self) -> dict[str, dict[str, str]]:
