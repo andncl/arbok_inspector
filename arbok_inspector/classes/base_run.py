@@ -189,7 +189,7 @@ class BaseRun(ABC):
         print(f"Selected results: {selected_results}")
         return selected_results
     
-    def update_subset_dims(self, dim: Dim, selection: str, index = None):
+    def update_subset_dims(self, dim: Dim, selection: str, index: int = 0):
         """
         Update the subset dimensions based on user selection.
 
@@ -209,6 +209,8 @@ class BaseRun(ABC):
                 print(f"Removing {dim.name} from {option}")
                 self.dim_axis_option[option].remove(dim)
                 dim.option = None
+                if option == 'select_value':
+                    dim.select_index = 0
         if dim.option in ['x-axis', 'y-axis']:
             print(f"Removing {dim.name} from {dim.option}")
             self.dim_axis_option[dim.option] = None
@@ -242,11 +244,11 @@ class BaseRun(ABC):
         """
         # TODO: take the averaging out of this! We only want to average if necessary
         # averaging can be computationally intensive!
-        self.full_data_set: Dataset = self._load_dataset()
         sub_set = self.full_data_set
         for avg_axis in self.dim_axis_option['average']:
             sub_set = sub_set.mean(dim=avg_axis.name)
         sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
+        print(f"Selecting subset with: {sel_dict}")
         sub_set = sub_set.isel(**sel_dict).squeeze()
         self.last_subset = sub_set
         return sub_set
@@ -275,4 +277,3 @@ class BaseRun(ABC):
             )
         print(f"{self.plot_selection= }")
         build_xarray_grid()
-
