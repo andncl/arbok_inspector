@@ -29,6 +29,7 @@ def build_xarray_grid() -> None:
         Figure: The Plotly Figure object containing the grid of plots.
     """
     #client = await ui.context.client.connected()
+    print("\nBuilding xarray grid of plots")
     run = app.storage.tab["run"]
     container = app.storage.tab["placeholders"]['plots']
     container.clear()
@@ -39,7 +40,6 @@ def build_xarray_grid() -> None:
         return
     ds = run.generate_subset()
     print(f"Found {len(ds.dims)} dimensions to plot in subset:")
-    fig_dict = {}
     if len(ds.dims) == 1:
         create_1d_plot(run, ds, container)
     elif len(ds.dims) == 2:

@@ -29,7 +29,7 @@ RUN_GRID_COLUMN_DEFS = [
 # }
 AGGRID_STYLE = 'height: 95%; min-height: 0;'
 EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start'
-DEFAULT_REFRESH_INTERVAL_S = 0.5
+DEFAULT_REFRESH_INTERVAL_S = 2
 
 @ui.page('/browser')
 async def database_browser_page():
@@ -104,23 +104,24 @@ def build_actions_section():
                 on_click=lambda: update_day_selecter(grids['day']),
                 color = '#4BA701'
                 ).props('dense').classes()
-            timer = ui.timer(
-                interval=DEFAULT_REFRESH_INTERVAL_S,
-                callback=  lambda: trigger_rebuild_run_selecter(None), #build_day_selecter(None),
-                active=False
+            with ui.row().classes('items-center gap-2'):
+                timer = ui.timer(
+                    interval=DEFAULT_REFRESH_INTERVAL_S,
+                    callback=  lambda: trigger_rebuild_run_selecter(None), #build_day_selecter(None),
+                    active=False
+                    )
+                # ui.label('Auto-plot')
+                ui.switch(
+                    on_change=lambda e: setattr(timer, 'active', e.value)
                 )
-            # ui.label('Auto-plot')
-            ui.switch(
-                on_change=lambda e: setattr(timer, 'active', e.value)
-            )
-            ui.number(
-                # label='(s)',
-                value=DEFAULT_REFRESH_INTERVAL_S,
-                min=0.1,
-                step=0.1,
-                format='%.1f',
-                on_change=lambda e: on_interval_change(e, timer),
-            ).props('dense suffix="s"').classes('w-12')
+                ui.number(
+                    # label='(s)',
+                    value=DEFAULT_REFRESH_INTERVAL_S,
+                    min=0.1,
+                    step=0.1,
+                    format='%.1f',
+                    on_change=lambda e: on_interval_change(e, timer),
+                ).props('dense suffix="s"').classes('w-12')
 
 def on_interval_change(e, timer):
     try:

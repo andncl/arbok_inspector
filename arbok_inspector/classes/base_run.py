@@ -41,6 +41,7 @@ class BaseRun(ABC):
         self.inspector: ArbokInspector =  inspector
         self._database_columns = self._get_database_columns()
         self.full_data_set: Dataset = self._load_dataset()
+        self.last_avg_subset: Dataset = self.full_data_set
         self.last_subset: Dataset = self.full_data_set
 
         self.parallel_sweep_axes: dict = {}
@@ -188,7 +189,7 @@ class BaseRun(ABC):
             selected_results = [next(iter(self.full_data_set.data_vars))]
         print(f"Selected results: {selected_results}")
         return selected_results
-    
+
     def update_subset_dims(self, dim: Dim, selection: str, index: int = 0):
         """
         Update the subset dimensions based on user selection.
@@ -245,12 +246,23 @@ class BaseRun(ABC):
         # TODO: take the averaging out of this! We only want to average if necessary
         # averaging can be computationally intensive!
         sub_set = self.full_data_set
-        for avg_axis in self.dim_axis_option['average']:
-            sub_set = sub_set.mean(dim=avg_axis.name)
+        last_non_avg_dims = list(self.last_avg_subset.dims)
+        avg_names = [d.name for d in self.dim_axis_option['average']]
+        sel_names = [d.name for d in self.dim_axis_option['select_value']]
+        different_avg_dims = bool(set(last_non_avg_dims) & set(avg_names))
+        sel_dims_in_last = set(sel_names).issubset(set(last_non_avg_dims))
+        if different_avg_dims or not sel_dims_in_last:
+            print(f"Averiging over {avg_names}")
+            sub_set = self.full_data_set.mean(dim=avg_names)
+        else:
+            print("Re-using last averaged subset")
+            sub_set = self.last_avg_subset
+        self.last_avg_subset = sub_set
         sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
         print(f"Selecting subset with: {sel_dict}")
         sub_set = sub_set.isel(**sel_dict).squeeze()
         self.last_subset = sub_set
+        print("subset dimensions", list(sub_set.dims))
         return sub_set
 
     def update_plot_selection(self, value: bool, readout_name: str):
