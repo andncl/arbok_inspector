@@ -41,6 +41,7 @@ class BaseRun(ABC):
         self.inspector: ArbokInspector =  inspector
         self._database_columns = self._get_database_columns()
         self.full_data_set: Dataset = self._load_dataset()
+        self.last_avg_subset: Dataset = self.full_data_set
         self.last_subset: Dataset = self.full_data_set
 
         self.parallel_sweep_axes: dict = {}
@@ -188,8 +189,8 @@ class BaseRun(ABC):
             selected_results = [next(iter(self.full_data_set.data_vars))]
         print(f"Selected results: {selected_results}")
         return selected_results
-    
-    def update_subset_dims(self, dim: Dim, selection: str, index = None):
+
+    def update_subset_dims(self, dim: Dim, selection: str, index: int = 0):
         """
         Update the subset dimensions based on user selection.
 
@@ -209,6 +210,8 @@ class BaseRun(ABC):
                 print(f"Removing {dim.name} from {option}")
                 self.dim_axis_option[option].remove(dim)
                 dim.option = None
+                if option == 'select_value':
+                    dim.select_index = 0
         if dim.option in ['x-axis', 'y-axis']:
             print(f"Removing {dim.name} from {dim.option}")
             self.dim_axis_option[dim.option] = None
@@ -243,6 +246,7 @@ class BaseRun(ABC):
         last_non_avg_dims = list(self.last_avg_subset.dims)
         avg_names = [d.name for d in self.dim_axis_option['average']]
         plot_names = [d.name for d in self.dim_axis_option['select_value']]
+<<<<<<< HEAD
         if self.dim_axis_option['y-axis'] is not None:
             plot_names.append(self.dim_axis_option['y-axis'].name)
         plot_names.append(self.dim_axis_option['x-axis'].name)
@@ -252,10 +256,22 @@ class BaseRun(ABC):
         else:
             print(f"Averiging over {avg_names}")
             sub_set = self.full_data_set.mean(dim=avg_names)
+=======
+        plot_names.append(self.dim_axis_option['x-axis'].name)
+        plot_names.append(self.dim_axis_option['y-axis'].name)
+        if set(plot_names).issubset(set(last_non_avg_dims)):
+            print(f"Averiging over {avg_names}")
+            sub_set = self.full_data_set.mean(dim=avg_names)
+        else:
+            sub_set = self.last_avg_subset
+            print(f"Re-using last averaged subset: {list(sub_set.dims)}")
+>>>>>>> e7e41fccae7cecba210ac70254ad34d8e16d1972
         self.last_avg_subset = sub_set
         sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
+        print(f"Selecting subset with: {sel_dict}")
         sub_set = sub_set.isel(**sel_dict).squeeze()
         self.last_subset = sub_set
+        print("subset dimensions", list(sub_set.dims))
         return sub_set
 
     def update_plot_selection(self, value: bool, readout_name: str):
@@ -282,4 +298,3 @@ class BaseRun(ABC):
             )
         print(f"{self.plot_selection= }")
         build_xarray_grid()
-

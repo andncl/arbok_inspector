@@ -2,26 +2,31 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import os
-import asyncio
-from nicegui import ui, app
+from nicegui import app, ui
 
-from arbok_inspector.widgets.json_plot_settings_dialog import JsonPlotSettingsDialog
+from arbok_inspector.classes.dim import Dim
+from arbok_inspector.widgets.json_plot_settings_dialog import (
+    JsonPlotSettingsDialog)
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
 
 if TYPE_CHECKING:
-    from arbok_inspector.classes.dim import Dim
-    from arbok_inspector.arbok_inspector.classes.base_run import BaseRun
+    from arbok_inspector.classes.base_run import BaseRun
 
-DEFAULT_REFRESH_INTERVAL_S = 0.5
+DEFAULT_REFRESH_INTERVAL_S = 2
 
 def build_run_view_actions() -> None:
     with ui.column().classes('items-start'):  # compact vertical layout
         # --- Row 1: Update + Debug ---
         with ui.row().classes('gap-2'):
-            ui.button('Update', icon='refresh', color='green',
-                    on_click=build_xarray_grid).props('dense')
-            ui.button('Debug', icon='info', color='red',
-                    on_click=print_debug).props('dense')
+            ui.button(
+                'Update',
+                icon='refresh',
+                color='green',
+                on_click=reload_dataset_and_refresh_plots
+                ).props('dense')
+            ui.button(
+                'Debug', icon='info', color='red', on_click=print_debug
+                ).props('dense')
 
         # --- Row 2: Settings buttons ---
         with ui.row().classes('gap-2'):
@@ -37,7 +42,7 @@ def build_run_view_actions() -> None:
         with ui.row().classes('items-center gap-2'):
             timer = ui.timer(
                 interval=DEFAULT_REFRESH_INTERVAL_S,
-                callback=build_xarray_grid,
+                callback=reload_dataset_and_refresh_plots,
                 active=False
                 )
             ui.label('Auto-plot')
@@ -63,10 +68,18 @@ def build_run_view_actions() -> None:
 
         # --- Row 5: Download buttons ---
         with ui.row().classes('gap-2'):
-            ui.button('Full', icon='file_download', color='blue',
-                    on_click=download_full_dataset).props('dense')
-            ui.button('Selection', icon='file_download', color='darkblue',
-                    on_click=download_data_selection).props('dense')
+            ui.button(
+                'Full',
+                icon='file_download',
+                color='blue',
+                on_click=download_full_dataset
+                ).props('dense')
+            ui.button(
+                'Selection',
+                icon='file_download',
+                color='darkblue',
+                on_click=download_data_selection
+                ).props('dense')
 
 def on_interval_change(e, timer):
     try:
@@ -120,3 +133,10 @@ def print_debug(run: BaseRun):
         else:
             val_str = str(val)
         print(f"{key}: \t {val_str}")
+
+def reload_dataset_and_refresh_plots() -> None:
+    """Reload the dataset and refresh the plots."""
+    run: BaseRun = app.storage.tab["run"]
+    run.full_data_set = run._load_dataset()
+    ui.notify("Dataset reloaded", color='green')
+    build_xarray_grid()
