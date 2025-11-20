@@ -39,7 +39,6 @@ def build_xarray_grid() -> None:
             color = 'red')
         return
     ds = run.generate_subset()
-    print(f"Found {len(ds.dims)} dimensions to plot in subset:")
     if len(ds.dims) == 1:
         create_1d_plot(run, ds, container)
     elif len(ds.dims) == 2:
