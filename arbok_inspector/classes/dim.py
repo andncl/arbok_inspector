@@ -1,4 +1,11 @@
 """Module for the Dim class."""
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nicegui.elements.html import Html
+    from nicegui.elements.select import Select
+    from nicegui.elements.slider import Slider
 
 class Dim:
     """
@@ -18,9 +25,11 @@ class Dim:
             ui_selector: Reference to the UI element for the dimension
         """
         self.name = name
-        self.option = None
-        self.select_index = 0
-        self.ui_selector = None
+        self.option: str | None = None
+        self.select_index: int = 0
+        self.ui_selector: Select | None = None
+        self.slider: Slider | None = None
+        self.select_label: Html | None = None
 
     def __str__(self):
         return self.name
