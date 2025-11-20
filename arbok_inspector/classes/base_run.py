@@ -249,8 +249,9 @@ class BaseRun(ABC):
         last_non_avg_dims = list(self.last_avg_subset.dims)
         avg_names = [d.name for d in self.dim_axis_option['average']]
         sel_names = [d.name for d in self.dim_axis_option['select_value']]
-        un_avg_dims = set(last_non_avg_dims) & set(avg_names)
-        if un_avg_dims or set(sel_names).issubset(set(last_non_avg_dims)) is False:
+        different_avg_dims = bool(set(last_non_avg_dims) & set(avg_names))
+        sel_dims_in_last = set(sel_names).issubset(set(last_non_avg_dims))
+        if different_avg_dims or not sel_dims_in_last:
             print(f"Averiging over {avg_names}")
             sub_set = self.full_data_set.mean(dim=avg_names)
         else:
