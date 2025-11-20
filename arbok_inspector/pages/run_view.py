@@ -198,7 +198,7 @@ def build_dim_slider(run: BaseRun, dim: Dim):
                 min=0, max=dim_size - 1, step=1, value=0,
                 on_change=lambda e: run.update_subset_dims(dim, 'select_value', e.value),
                 ).classes('flex-grow')\
-                .props('color="purple" markers label-always')
+                .props('color="purple" markers')
         dim.select_label = ui.html('').classes(
             'shrink-0 text-right px-2 py-1 bg-purple text-white rounded-lg text-xs font-normal text-center')
         update_value_from_dim_slider(
