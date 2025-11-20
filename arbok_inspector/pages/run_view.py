@@ -16,8 +16,11 @@ from arbok_inspector.helpers.unit_formater import unit_formatter
 from arbok_inspector.classes.qcodes_run import QcodesRun
 from arbok_inspector.classes.native_run import NativeRun
 
-
 from arbok_inspector.classes.dim import Dim
+
+if TYPE_CHECKING:
+    from nicegui.elements.slider import Slider
+    from arbok_inspector.classes.base_run import BaseRun
 
 RUN_TABLE_COLUMNS = [
     {'field': 'name', 'filter': 'agTextColumnFilter', 'floatingFilter': True},
@@ -52,7 +55,6 @@ async def run_page(run_id: str):
         raise ValueError(
             "Database type must be 'qcodes' or 'arbok_native is:"
             f"{inspector.database_type}")
-    
 
     app.storage.tab["placeholders"] = {'plots': None}
     app.storage.tab["run"] = run
@@ -89,7 +91,6 @@ async def run_page(run_id: str):
                     value = str(conf['value'])
                     if len(value) > 20 or value is None:
                         continue
-                    print(column_name, type(value))
                     if 'label' in conf:
                         label = ui.label(f"{conf['label']}: ")
                     else:
@@ -115,7 +116,6 @@ async def run_page(run_id: str):
             with ui.expansion('metadata', icon='numbers', value=False)\
                 .classes(f"{EXPANSION_CLASSES}  overflow-x-auto"):
                 placeholder_metadata = {}
-                
                 placeholder_metadata['code'] = ui.code(
                     content = 'Placeholder for QUA program',
                     language = 'python')\
@@ -142,10 +142,7 @@ def add_dim_dropdown(sweep_idx: int):
     width = 'w-full'
     dim = run.sweep_dict[sweep_idx]
     local_placeholder = {"slider": None}
-    #with ui.column().classes('w-full no-wrap items-center gap-1'):
     dims_names = run.parallel_sweep_axes[sweep_idx]
-    #ui.separator().classes('w-full my-1')
-    # with ui.card().classes('w-full gap-1 px-2 py-2'):
     ui.radio(
         options = dims_names,
         value=dim.name,
@@ -161,7 +158,7 @@ def add_dim_dropdown(sweep_idx: int):
     dim.ui_selector = ui_element
     local_placeholder["slider"] = ui.column().classes('w-full')
     if dim.option == 'select_value':
-        build_dim_slider(run, dim, local_placeholder["slider"])
+        build_dim_slider(run, dim)
 
 def update_dim_selection(dim: Dim, value: str, slider_placeholder):
     """
@@ -172,43 +169,46 @@ def update_dim_selection(dim: Dim, value: str, slider_placeholder):
         value (str): The new selection value
         slider_placeholder: The UI placeholder to update
     """
-    run = app.storage.tab["run"]
-    if slider_placeholder is not None:
-        slider_placeholder.clear()
+    run: BaseRun = app.storage.tab["run"]
+    if dim.slider is not None:
+        print("DELETING SLIDER")
+        dim.slider.delete()
+        dim.slider = None
+        dim.select_label.delete()
+        dim.select_label = None
     print(value)
-    if value == 'average':
-        run.update_subset_dims(dim, 'average')
-        dim.option = 'average'
-    if value == 'select_value':  
+    if value == 'select_value':
         with slider_placeholder:
-            build_dim_slider(run, dim, slider_placeholder)
-    else:
-        run.update_subset_dims(dim, value)
-        dim.option = value
+            build_dim_slider(run, dim)
+     
+    run.update_subset_dims(dim, value)
+    dim.option = value
     build_xarray_grid()
 
-def build_dim_slider(run: Runm, dim: Dim, slider_placeholder):
+def build_dim_slider(run: BaseRun, dim: Dim):
     """
     Build a slider for selecting the index of a dimension.
 
     Args:
         dim (Dim): The dimension object
-        slider_placeholder: The UI placeholder to add the slider to
     """
     dim_size = run.full_data_set.sizes[dim.name]
     with ui.row().classes("w-full items-center"):
         with ui.column().classes('flex-grow'):
-            slider = ui.slider(
+            dim.slider = ui.slider(
                 min=0, max=dim_size - 1, step=1, value=0,
                 on_change=lambda e: run.update_subset_dims(dim, 'select_value', e.value),
                 ).classes('flex-grow')\
                 .props('color="purple" markers label-always')
-        label = ui.html('').classes('shrink-0 text-right px-2 py-1 bg-purple text-white rounded-lg text-xs font-normal text-center')
-        update_value_from_dim_slider(label, slider, dim, plot = False)
-        slider.on(
+        dim.select_label = ui.html('').classes(
+            'shrink-0 text-right px-2 py-1 bg-purple text-white rounded-lg text-xs font-normal text-center')
+        update_value_from_dim_slider(
+            dim.select_label, dim.slider, dim, plot = False)
+        dim.slider.on(
             'update:model-value',
-            lambda e: update_value_from_dim_slider(label, slider, dim),
+            lambda e: update_value_from_dim_slider(dim.select_label, dim.slider, dim),
             throttle=0.2, leading_events=False)
+
 
 def update_value_from_dim_slider(label, slider, dim: Dim, plot = True):
     """
@@ -233,12 +233,11 @@ def update_sweep_dim_name(dim: Dim, new_name: str):
         dim (Dim): The dimension object to update
         new_name (str): The new name for the dimension
     """
-    run = app.storage.tab["run"]
     dim.name = new_name
     dim.ui_selector.label = new_name.replace("__", ".")
     build_xarray_grid()
 
-def load_qua_code(run: Run, placeholder: dict):
+def load_qua_code(run: BaseRun, placeholder: dict):
     """Load and display the QUA code for the given run."""
     try:
         qua_code = run.get_qua_code(as_string = True)
@@ -248,7 +247,7 @@ def load_qua_code(run: Run, placeholder: dict):
         ui.notify(f'Error loading QUA code: {str(e)}', type='negative')
         raise e
 
-def download_qua_code(run: Run) -> None:
+def download_qua_code(run: BaseRun) -> None:
     """Download the serialized QUA code for the given run."""
     try:
         qua_code_bytes = run.get_qua_code(as_string = False)
