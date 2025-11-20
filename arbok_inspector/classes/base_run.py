@@ -246,7 +246,6 @@ class BaseRun(ABC):
         last_non_avg_dims = list(self.last_avg_subset.dims)
         avg_names = [d.name for d in self.dim_axis_option['average']]
         plot_names = [d.name for d in self.dim_axis_option['select_value']]
-<<<<<<< HEAD
         if self.dim_axis_option['y-axis'] is not None:
             plot_names.append(self.dim_axis_option['y-axis'].name)
         plot_names.append(self.dim_axis_option['x-axis'].name)
@@ -256,16 +255,6 @@ class BaseRun(ABC):
         else:
             print(f"Averiging over {avg_names}")
             sub_set = self.full_data_set.mean(dim=avg_names)
-=======
-        plot_names.append(self.dim_axis_option['x-axis'].name)
-        plot_names.append(self.dim_axis_option['y-axis'].name)
-        if set(plot_names).issubset(set(last_non_avg_dims)):
-            print(f"Averiging over {avg_names}")
-            sub_set = self.full_data_set.mean(dim=avg_names)
-        else:
-            sub_set = self.last_avg_subset
-            print(f"Re-using last averaged subset: {list(sub_set.dims)}")
->>>>>>> e7e41fccae7cecba210ac70254ad34d8e16d1972
         self.last_avg_subset = sub_set
         sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
         print(f"Selecting subset with: {sel_dict}")
