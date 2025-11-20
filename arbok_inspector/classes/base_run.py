@@ -240,12 +240,19 @@ class BaseRun(ABC):
         Returns:
             sub_set (xarray.Dataset): The subset of the full dataset
         """
-        # TODO: take the averaging out of this! We only want to average if necessary
-        # averaging can be computationally intensive!
-        self.full_data_set: Dataset = self._load_dataset()
-        sub_set = self.full_data_set
-        for avg_axis in self.dim_axis_option['average']:
-            sub_set = sub_set.mean(dim=avg_axis.name)
+        last_non_avg_dims = list(self.last_avg_subset.dims)
+        avg_names = [d.name for d in self.dim_axis_option['average']]
+        plot_names = [d.name for d in self.dim_axis_option['select_value']]
+        if self.dim_axis_option['y-axis'] is not None:
+            plot_names.append(self.dim_axis_option['y-axis'].name)
+        plot_names.append(self.dim_axis_option['x-axis'].name)
+        if set(plot_names) == set(last_non_avg_dims):
+            sub_set = self.last_avg_subset
+            print(f"Re-using last averaged subset: {list(sub_set.dims)}")
+        else:
+            print(f"Averiging over {avg_names}")
+            sub_set = self.full_data_set.mean(dim=avg_names)
+        self.last_avg_subset = sub_set
         sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
         sub_set = sub_set.isel(**sel_dict).squeeze()
         self.last_subset = sub_set
