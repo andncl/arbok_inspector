@@ -26,7 +26,6 @@ def axis_label_formater(ds: xr.DataArray, dim_name: str) -> str:
         A formatted axis label string.
     """
     dim_list = dim_name.split('__')
-    print(f"{dim_list=}")
     if 'units' in ds.coords[dim_name].attrs:
         unit = ds.coords[dim_name].attrs['units']
     else:
