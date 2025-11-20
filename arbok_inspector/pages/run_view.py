@@ -180,7 +180,6 @@ def update_dim_selection(dim: Dim, value: str, slider_placeholder):
     if value == 'select_value':
         with slider_placeholder:
             build_dim_slider(run, dim)
-     
     run.update_subset_dims(dim, value)
     dim.option = value
     build_xarray_grid()
