@@ -18,7 +18,6 @@ class ArbokInspector:
         self.qcodes_database_path = None
         self.conn = None
         self.cursor = None
-        
         self.database_engine = None
         self.minio_filesystem = None
         self.minio_bucket = None
