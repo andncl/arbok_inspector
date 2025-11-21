@@ -1,12 +1,11 @@
 """Run view page showing the data and plots for a specific run"""
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from datetime import datetime, timedelta
 import json
-import os
 import importlib.resources as resources
 
 from nicegui import ui, app
+from nicegui import run as nicegui_run
 
 from arbok_inspector.state import inspector
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
@@ -44,18 +43,28 @@ async def run_page(run_id: str):
         run_id (str): ID of the run to display
     """
     ui.page_title(f"{run_id}")
+    run_id = int(run_id)
     _ = await ui.context.client.connected()
+    app.storage.tab["qcodes_db_path"] = inspector.qcodes_database_path
     if 'run' in app.storage.tab:
         print('run already exists!')
-    if inspector.database_type == 'qcodes':
-        run = QcodesRun(int(run_id))
-    elif 'arbok_native':
-        run = NativeRun(int(run_id))
-    else:
-        raise ValueError(
-            "Database type must be 'qcodes' or 'arbok_native is:"
-            f"{inspector.database_type}")
-
+    with ui.dialog() as loading_dialog:
+        with ui.card().classes('p-6 items-center'):
+            ui.label('Loading dataset...')
+            ui.spinner(size='lg')
+    loading_dialog.open()
+    try:
+        run = await create_run(run_id)
+        app.storage.tab["run"] = run
+    except Exception as e:
+        loading_dialog.close()
+        ui.notify(f"Error loading run: {e}", type="error", close_button="OK")
+        print("Error in create_run:", e)
+        ui.label("Failed to load run!")
+        return
+    finally:
+        if loading_dialog.visible:
+            loading_dialog.close()
     app.storage.tab["placeholders"] = {'plots': None}
     app.storage.tab["run"] = run
     with resources.files("arbok_inspector.configurations").joinpath("1d_plot.json").open("r") as f:
@@ -255,3 +264,16 @@ def download_qua_code(run: BaseRun) -> None:
     except Exception as e:
         ui.notify(f'Error downloading QUA code: {str(e)}', type='negative')
         raise e
+
+async def create_run(run_id: int) -> BaseRun:
+    """Create a Run object for the given run ID."""
+    if inspector.database_type == 'qcodes':
+        run = QcodesRun(int(run_id))
+    elif inspector.database_type == 'arbok_native':
+        run = NativeRun(int(run_id))
+    else:
+        raise ValueError(
+            "Database type must be 'qcodes' or 'arbok_native is:"
+            f"{inspector.database_type}")
+    await nicegui_run.io_bound(run.prepare_run)
+    return run
