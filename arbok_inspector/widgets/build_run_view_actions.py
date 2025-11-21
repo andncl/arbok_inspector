@@ -2,7 +2,10 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import os
+import asyncio
+
 from nicegui import app, ui
+from nicegui import run as nicegui_run
 
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.json_plot_settings_dialog import (
@@ -15,8 +18,9 @@ if TYPE_CHECKING:
 DEFAULT_REFRESH_INTERVAL_S = 2
 
 def build_run_view_actions() -> None:
+    """Build the run view action buttons and controls."""
     with ui.column().classes('items-start'):  # compact vertical layout
-        # --- Row 1: Update + Debug ---
+        # Row 1: Update + Debug
         with ui.row().classes('gap-2'):
             ui.button(
                 'Update',
@@ -28,7 +32,7 @@ def build_run_view_actions() -> None:
                 'Debug', icon='info', color='red', on_click=print_debug
                 ).props('dense')
 
-        # --- Row 2: Settings buttons ---
+        # Row 2: Settings buttons
         with ui.row().classes('gap-2'):
             dialog_1d = JsonPlotSettingsDialog('plot_dict_1D')
             dialog_2d = JsonPlotSettingsDialog('plot_dict_2D')
@@ -38,7 +42,7 @@ def build_run_view_actions() -> None:
             ui.button('2D settings', color='orange',
                     on_click=dialog_2d.open).props('dense')
 
-        # --- Row 3: Timer controls ---
+        # Row 3: Timer controls
         with ui.row().classes('items-center gap-2'):
             timer = ui.timer(
                 interval=DEFAULT_REFRESH_INTERVAL_S,
@@ -134,9 +138,14 @@ def print_debug(run: BaseRun):
             val_str = str(val)
         print(f"{key}: \t {val_str}")
 
-def reload_dataset_and_refresh_plots() -> None:
+refresh_lock = asyncio.Lock()
+
+async def reload_dataset_and_refresh_plots() -> None:
     """Reload the dataset and refresh the plots."""
-    run: BaseRun = app.storage.tab["run"]
-    run.full_data_set = run._load_dataset()
-    ui.notify("Dataset reloaded", color='green')
-    build_xarray_grid()
+    if refresh_lock.locked():
+        return
+    async with refresh_lock:
+        run: BaseRun = app.storage.tab["run"]
+        run.full_data_set = await nicegui_run.io_bound(run._load_dataset)
+        ui.notify("Dataset reloaded", color='green')
+        build_xarray_grid()
