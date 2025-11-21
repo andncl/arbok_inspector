@@ -4,11 +4,17 @@ from typing import TYPE_CHECKING
 
 import os
 from pathlib import Path
+import sqlite3
 
-from nicegui import ui
+from nicegui import app, ui
 from qcodes.dataset import load_by_id
 from qcodes.dataset.sqlite.database import get_DB_location
+from qcodes import config as qc_config
+from qcodes.dataset.sqlite.database import initialise_or_create_database_at, connect
+from qcodes.dataset import load_by_id
+
 from arbok_inspector.classes.base_run import BaseRun
+from arbok_inspector.state import inspector
 
 if TYPE_CHECKING:
     from xarray import Dataset
@@ -18,8 +24,8 @@ COLUMN_LABELS = {}
 class QcodesRun(BaseRun):
     """"""
     def __init__(
-            self,
-            run_id: int
+        self,
+        run_id: int
     ):
         """
         Constructor for QcodesRun class
@@ -28,16 +34,31 @@ class QcodesRun(BaseRun):
             run_id (int): Run ID of the measurement run
         """
         super().__init__(run_id)
-        
-    def _load_dataset(self) -> Dataset:
-        dataset = load_by_id(self.run_id)
+        self.db_path = app.storage.tab["qcodes_db_path"]
+
+    def prepare_run(self) -> None:
+        """Prepare the run by loading the dataset asynchronously."""
+        db_path = self.db_path
+        qc_config["core"]["db_location"] = db_path
+        initialise_or_create_database_at(db_path)
+        conn = connect(db_path, debug=False)
+        with connect(db_path, debug=False) as conn:
+            self._database_columns = self._get_database_columns(conn)
+            self.full_data_set: Dataset = self._load_dataset(conn)
+            self.process_run_data()
+
+    def _load_dataset(self, conn) -> Dataset:
+        """Load the xarray Dataset for the run from the QCoDeS database."""
+        dataset = load_by_id(self.run_id, conn=conn)
         dataset = dataset.to_xarray_dataset(use_multi_index = 'never')
         return dataset
 
-    def _get_database_columns(self) -> dict[str, dict[str, str]]:
-        self.inspector.cursor.execute(
+    def _get_database_columns(self, conn) -> dict[str, dict[str, str]]:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
             "SELECT * FROM runs WHERE run_id = ?", (self.run_id,))
-        row = self.inspector.cursor.fetchone()
+        row = cursor.fetchone()
         if row is not None:
             row_dict = dict(row)
         else:
