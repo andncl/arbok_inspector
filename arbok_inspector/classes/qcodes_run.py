@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import os
+from functools import wraps
 from pathlib import Path
 import sqlite3
 
@@ -21,6 +22,21 @@ if TYPE_CHECKING:
 
 COLUMN_LABELS = {}
 
+def with_sqlite_connection(func):
+    """
+    Decorator that creates a SQLite connection, passes it to the function,
+    and closes it automatically.
+    """
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        db_path = self.db_path
+        qc_config["core"]["db_location"] = db_path
+        initialise_or_create_database_at(db_path)
+        with connect(db_path, debug=False) as conn:
+            # Pass the connection to the decorated function
+            return func(self, conn, *args, **kwargs)
+    return wrapper
+
 class QcodesRun(BaseRun):
     """"""
     def __init__(
@@ -36,23 +52,14 @@ class QcodesRun(BaseRun):
         super().__init__(run_id)
         self.db_path = app.storage.tab["qcodes_db_path"]
 
-    def prepare_run(self) -> None:
-        """Prepare the run by loading the dataset asynchronously."""
-        db_path = self.db_path
-        qc_config["core"]["db_location"] = db_path
-        initialise_or_create_database_at(db_path)
-        conn = connect(db_path, debug=False)
-        with connect(db_path, debug=False) as conn:
-            self._database_columns = self._get_database_columns(conn)
-            self.full_data_set: Dataset = self._load_dataset(conn)
-            self.process_run_data()
-
+    @with_sqlite_connection
     def _load_dataset(self, conn) -> Dataset:
         """Load the xarray Dataset for the run from the QCoDeS database."""
         dataset = load_by_id(self.run_id, conn=conn)
         dataset = dataset.to_xarray_dataset(use_multi_index = 'never')
         return dataset
 
+    @with_sqlite_connection
     def _get_database_columns(self, conn) -> dict[str, dict[str, str]]:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()

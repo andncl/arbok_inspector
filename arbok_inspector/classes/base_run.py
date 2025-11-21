@@ -47,24 +47,6 @@ class BaseRun(ABC):
         self.dims: list[Dim] = []
         self.plot_selection: list[str] = []
 
-    def process_run_data(self) -> None:
-        """
-        Prepare the run by loading dataset and initializing attributes
-        """
-        self.last_avg_subset: Dataset = self.full_data_set
-        self.load_sweep_dict()
-        self.dims: list[Dim] = list(self.sweep_dict.values())
-        self.dim_axis_option: dict[str, str|list[Dim]] = self.set_dim_axis_option()
-        print(self.dims)
-
-        self.plot_selection: list[str] = self.select_results_by_keywords(
-            app.storage.general["result_keywords"]
-        )
-        print(f"Initial plot selection: {self.plot_selection}")
-        self.plots_per_column: int = 2
-        self.plots: list = []
-        self.figures: list = []
-
     @property
     def database_columns(self) -> dict[str, dict[str, str]]:
         """Column names of database, with their values and shown labels"""
@@ -72,14 +54,6 @@ class BaseRun(ABC):
 
     @abstractmethod
     def _get_database_columns(self) -> dict[str, dict[str, str]]:
-        pass
-
-    @abstractmethod
-    def prepare_run(self) -> None:
-        """
-        Prepare the run by loading dataset and initializing attributes.
-        This is separated from the constructor to allow asynchronous loading.
-        """
         pass
 
     @abstractmethod
@@ -104,6 +78,30 @@ class BaseRun(ABC):
             qua_code (str): The QUA code as a string
         """
         pass
+
+    def prepare_run(self) -> None:
+        """Prepare the run by loading the dataset asynchronously."""
+        self._database_columns = self._get_database_columns()
+        self.full_data_set: Dataset = self._load_dataset()
+        self.process_run_data()
+
+    def process_run_data(self) -> None:
+        """
+        Prepare the run by loading dataset and initializing attributes
+        """
+        self.last_avg_subset: Dataset = self.full_data_set
+        self.load_sweep_dict()
+        self.dims: list[Dim] = list(self.sweep_dict.values())
+        self.dim_axis_option: dict[str, str|list[Dim]] = self.set_dim_axis_option()
+        print(self.dims)
+
+        self.plot_selection: list[str] = self.select_results_by_keywords(
+            app.storage.general["result_keywords"]
+        )
+        print(f"Initial plot selection: {self.plot_selection}")
+        self.plots_per_column: int = 2
+        self.plots: list = []
+        self.figures: list = []
 
     def load_sweep_dict(self):
         """
