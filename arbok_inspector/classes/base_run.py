@@ -11,6 +11,7 @@ import io
 import json
 from qcodes.dataset import load_by_id
 from nicegui import ui, app
+from nicegui import run as nicegui_run
 import xarray as xr
 
 
@@ -39,13 +40,18 @@ class BaseRun(ABC):
         self.run_id: int = run_id
         self.title: str = f'Run ID: {run_id}  (-> add experiment)'
         self.inspector: ArbokInspector =  inspector
-        self._database_columns = self._get_database_columns()
-        self.full_data_set: Dataset = self._load_dataset()
-        self.last_avg_subset: Dataset = self.full_data_set
-        self.last_subset: Dataset = self.full_data_set
-
         self.parallel_sweep_axes: dict = {}
         self.sweep_dict: dict[int, Dim] = {}
+        self.full_data_set: Dataset | None = None
+        self._database_columns: dict[str, dict[str, str]] = {}
+        self.dims: list[Dim] = []
+        self.plot_selection: list[str] = []
+
+    def process_run_data(self) -> None:
+        """
+        Prepare the run by loading dataset and initializing attributes
+        """
+        self.last_avg_subset: Dataset = self.full_data_set
         self.load_sweep_dict()
         self.dims: list[Dim] = list(self.sweep_dict.values())
         self.dim_axis_option: dict[str, str|list[Dim]] = self.set_dim_axis_option()
@@ -66,6 +72,14 @@ class BaseRun(ABC):
 
     @abstractmethod
     def _get_database_columns(self) -> dict[str, dict[str, str]]:
+        pass
+
+    @abstractmethod
+    def prepare_run(self) -> None:
+        """
+        Prepare the run by loading dataset and initializing attributes.
+        This is separated from the constructor to allow asynchronous loading.
+        """
         pass
 
     @abstractmethod
@@ -259,7 +273,6 @@ class BaseRun(ABC):
         sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
         print(f"Selecting subset with: {sel_dict}")
         sub_set = sub_set.isel(**sel_dict).squeeze()
-        self.last_subset = sub_set
         print("subset dimensions", list(sub_set.dims))
         return sub_set
 
