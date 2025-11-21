@@ -183,6 +183,9 @@ def trigger_rebuild_run_selecter(day):
     ### TODO: make this an aggrid update! Not rebuild. Its very flashy!
     print(day)
     if day is None:
-        day = app.storage.tab['last_selected_day']
+        if 'last_selected_day' in app.storage.tab:
+            day = app.storage.tab['last_selected_day']
+        else:
+            return
     build_run_selecter(day)
     app.storage.tab['last_selected_day'] = day
