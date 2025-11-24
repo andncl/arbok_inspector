@@ -1,15 +1,15 @@
-import time
-from dataclasses import dataclass
+"""Database browser page showing the selected database information and run/day selectors."""
 from nicegui import ui, app
 
 from arbok_inspector.state import inspector
-from arbok_inspector.pages.run_view import run_page
-from arbok_inspector.widgets.update_day_selecter import update_day_selecter
-from arbok_inspector.widgets.build_run_selecter import build_run_selecter
+from arbok_inspector.widgets.day_selector import (
+    build_day_selector,
+    update_day_selector,
+    trigger_update_run_selector
+)
+from arbok_inspector.widgets.run_selector import build_run_selector
 
-DAY_GRID_COLUMN_DEFS = [
-    {'headerName': 'Day', 'field': 'day'},
-]
+
 
 small_col_width = 30
 RUN_GRID_COLUMN_DEFS = [
@@ -20,13 +20,7 @@ RUN_GRID_COLUMN_DEFS = [
     {'headerName': 'Started', 'field': 'run_timestamp', "width": small_col_width},
     {'headerName': 'Finish', 'field': 'completed_timestamp', "width": small_col_width},
 ]
-# RUN_PARAM_DICT = {
-#     'run_id': 'Run ID',
-#     'exp_id': 'Experiment ID',
-#     'result_counter': '# results',
-#     'run_timestamp': 'Started',
-#     'completed_timestamp': 'Completed',
-# }
+
 AGGRID_STYLE = 'height: 95%; min-height: 0;'
 EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start'
 DEFAULT_REFRESH_INTERVAL_S = 2
@@ -37,30 +31,35 @@ async def database_browser_page():
     _ = await ui.context.client.connected()
     if inspector.database_type is None:
         ui.navigate.to('/')
+        print("No database type selected, redirecting to home page.")
+        return
     app.storage.tab['last_selected_day'] = None
     app.storage.general["avg_axis"] = 'iteration'
     app.storage.general["result_keywords"] = None
     app.storage.tab["avg_axis_input"] = None
     app.storage.tab["result_keyword_input"] = None
+
+    app.storage.tab['day_grid'] = None
+    app.storage.tab['run_grid'] = None
+
     offset_minutes = await ui.run_javascript('new Date().getTimezoneOffset()')
     offset_hours = -float(offset_minutes) / 60
     app.storage.general["timezone"] = offset_hours
     print(f"TIMEZONE: UTC{offset_hours}")
 
-    grids = {'day': None, 'run': None}
     with ui.column().classes('w-full h-screen'):
         ui.add_head_html('<title>Arbok Inspector - Database general</title>')
         with ui.row().classes('w-full items-center justify-between'):
             ui.label('Arbok Inspector').classes('text-3xl font-bold mb-1')
-            
             with ui.expansion('Database info and settings', icon='info', value=True)\
                 .classes(EXPANSION_CLASSES).props('expand-separator'):
-                build_database_info_section(grids)
+                build_database_info_section()
 
         with ui.row().classes('w-full flex-1'):
-            build_day_selecter(grids)
-            app.storage.tab['run_selecter'] = ui.column().classes('flex-1').classes('h-full')
-            trigger_rebuild_run_selecter(day = None)
+            with ui.column().style('width: 120px;').classes('h-full'):
+                app.storage.tab['day_grid'] = build_day_selector()
+            with ui.column().classes('flex-1').classes('h-full'):
+                app.storage.tab['run_grid'] = build_run_selector()
 
 def open_run_page(run_id: int):
     app.storage.general["avg_axis"] = app.storage.tab["avg_axis_input"].value
@@ -69,12 +68,12 @@ def open_run_page(run_id: int):
     print(app.storage.general['result_keywords'])
     ui.navigate.to(f'/run/{run_id}', new_tab=True)
 
-def build_database_info_section(grids):
+def build_database_info_section():
     """Build the database information and settings section."""
     with ui.row().classes('w-full'):
         build_info_section()
         build_actions_section()
-        build_settings_section(grids)
+        build_settings_section()
 
 def build_info_section():
     """Build the database information section."""
@@ -88,11 +87,12 @@ def build_info_section():
 def _build_qcodes_db_info_section():
     if inspector.qcodes_database_path:
         ui.label(f'Database Path: {str(inspector.qcodes_database_path)}')
-       
+
 def _build_native_db_info_section():
     ui.label(f'Native database info placeholder')
 
 def build_actions_section():
+    """Build the database action buttons section."""
     with ui.card().classes('w-1/4 h-full'):
         with ui.column().classes('w-full justify-start'):
             ui.button(
@@ -101,13 +101,13 @@ def build_actions_section():
                 color='purple').props('dense').classes()
             ui.button(
                 text = 'Reload',
-                on_click=lambda: update_day_selecter(grids['day']),
+                on_click=lambda: update_day_selector(),
                 color = '#4BA701'
                 ).props('dense').classes()
             with ui.row().classes('items-center gap-2'):
                 timer = ui.timer(
                     interval=DEFAULT_REFRESH_INTERVAL_S,
-                    callback=  lambda: trigger_rebuild_run_selecter(None), #build_day_selecter(None),
+                    callback=  lambda: trigger_update_run_selector(None),
                     active=False
                     )
                 # ui.label('Auto-plot')
@@ -123,7 +123,14 @@ def build_actions_section():
                     on_change=lambda e: on_interval_change(e, timer),
                 ).props('dense suffix="s"').classes('w-12')
 
-def on_interval_change(e, timer):
+def on_interval_change(e, timer) -> None:
+    """
+    Handles changes to the refresh interval input.
+    
+    Args:
+        e: The event object containing the new value.
+        timer: The timer object to update the interval for.
+    """
     try:
         value = float(e.value)
         if value < 0.1:
@@ -136,7 +143,7 @@ def on_interval_change(e, timer):
         ui.notify('Please enter a valid number', color='red')
         e.sender.value = timer.interval  # revert
 
-def build_settings_section(grids):
+def build_settings_section():
     """Build the database settings section."""
     with ui.card().classes('w-1/3'):
         with ui.row().classes('w-full'):
@@ -158,34 +165,3 @@ def build_settings_section(grids):
                 value = "iteration"
                 ).props('rounded outlined dense')\
                 .classes('w-full')
-
-
-def build_day_selecter(grids):
-    """Build the day selecter grid."""
-    with ui.column().style('width: 120px;').classes('h-full'):
-        grids['day'] = ui.aggrid(
-            {
-                'defaultColDef': {'flex': 1},
-                'columnDefs': DAY_GRID_COLUMN_DEFS,
-                'rowData': {},
-                'rowSelection': 'multiple',
-            },
-            theme = 'ag-theme-balham-dark')\
-            .classes('text-sm ag-theme-balham-dark')\
-            .style(AGGRID_STYLE)\
-            .on(
-                type = 'cellClicked',
-                handler = lambda event: trigger_rebuild_run_selecter(event.args["value"])
-            )
-        update_day_selecter(grids['day'])
-
-def trigger_rebuild_run_selecter(day):
-    ### TODO: make this an aggrid update! Not rebuild. Its very flashy!
-    print(day)
-    if day is None:
-        if 'last_selected_day' in app.storage.tab:
-            day = app.storage.tab['last_selected_day']
-        else:
-            return
-    build_run_selecter(day)
-    app.storage.tab['last_selected_day'] = day
