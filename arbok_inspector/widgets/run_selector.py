@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 from nicegui import ui, app
@@ -27,21 +28,68 @@ NATIVE_RUN_GRID_COLUMN_DEFS = [
 ]
 AGGRID_STYLE = 'height: 95%; min-height: 0;'
 
-def build_run_selecter(target_day):
-    container = app.storage.tab['run_selecter']
-    container.clear()
+def build_run_selector(target_day: str | None = None) -> ui.aggrid:
+    """Build the run selector grid for the specified day."""
+    if target_day is None:
+        target_day: str = app.storage.tab.get('last_selected_day')
+    run_grid_rows, run_grid_columns = get_run_grid_data(target_day)
+    run_grid = ui.aggrid(
+            {
+                'defaultColDef': {'flex': 1, 'minWidth': 50},
+                'columnDefs': run_grid_columns,
+                'rowData': run_grid_rows,
+                'rowSelection': 'multiple',
+            },
+        ).classes('ag-theme-balham-dark').style(
+            AGGRID_STYLE
+        ).on(
+            'cellClicked',
+            lambda event: open_run_page(event.args['data']['run_id'])
+        )
+    ui.notify(
+        'Run selector updated: \n'
+        f'found {len(run_grid_rows)} run(s)',
+        type='positive',
+        multi_line=True,
+        classes='multi-line-notification',
+        position = 'top-right'
+    )
+    return run_grid
 
+def update_run_selector(target_day: str | None = None) -> None:
+    """Update the run selector grid based on the last selected day."""
+    if target_day is None:
+        target_day: str = app.storage.tab.get('last_selected_day')
+    run_grid: ui.aggrid = app.storage.tab.get('run_grid')
+    run_grid_rows, _ = get_run_grid_data(target_day)
+    ui.run_javascript(f"""
+        const grid = getElement('{run_grid.id}');
+        if (grid && grid.api) {{
+            grid.api.setGridOption('rowData', {json.dumps(run_grid_rows)});
+        }}
+    """)
+
+def get_run_grid_data(target_day: str) -> tuple[list[dict], list[dict]]:
+    """
+    Fetch run data for the specified day from the database.
+    
+    Args:
+        target_day (str): The target day in 'YYYY-MM-DD'
+    Returns:
+        tuple[list[dict], list[dict]]: A tuple containing the list of run data
+        dictionaries and the list of column definitions.
+    """
     offset_hours = app.storage.general["timezone"]
     run_grid_rows = []
     print(f"Showing runs from {target_day}")
     if inspector.database_type == 'qcodes':
         rows = get_qcodes_runs_for_day(inspector.cursor, target_day, offset_hours)
-        column_defs = QCODES_RUN_GRID_COLUMN_DEFS
+        run_grid_columns = QCODES_RUN_GRID_COLUMN_DEFS
     else:
         rows = get_native_arbok_runs_for_day(inspector.database_engine, target_day, offset_hours)
-        column_defs = NATIVE_RUN_GRID_COLUMN_DEFS
+        run_grid_columns = NATIVE_RUN_GRID_COLUMN_DEFS
     run_grid_rows = []
-    columns = [x['field'] for x in column_defs]
+    columns = [x['field'] for x in run_grid_columns]
     for run in rows:
         run_dict = {}
         for key in columns:
@@ -56,28 +104,7 @@ def build_run_selecter(target_day):
                         value = 'N/A'
                 run_dict[key] = value
         run_grid_rows.insert(0, run_dict)
-    with container:
-        ui.aggrid(
-                {
-                    'defaultColDef': {'flex': 1},
-                    'columnDefs': column_defs,
-                    'rowData': run_grid_rows,
-                    'rowSelection': 'multiple',
-                },
-            ).classes('ag-theme-balham-dark').style(
-                AGGRID_STYLE
-            ).on(
-                'cellClicked',
-                lambda event: open_run_page(event.args['data']['run_id'])
-            )
-    ui.notify(
-        'Run selector updated: \n'
-        f'found {len(run_grid_rows)} run(s)',
-        type='positive',
-        multi_line=True,
-        classes='multi-line-notification',
-        position = 'top-right'
-    )
+    return run_grid_rows, run_grid_columns
 
 def get_qcodes_runs_for_day(
     cursor, target_day: str, offset_hours: float
@@ -110,7 +137,7 @@ def get_qcodes_runs_for_day(
     rows = cursor.fetchall()
     row_dicts = [dict(row) for row in rows]
     return row_dicts
-     
+
 NATIVE_COLUMNS = {
     'run_id': 'run ID',
     'name': 'name',
