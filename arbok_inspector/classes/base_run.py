@@ -46,6 +46,7 @@ class BaseRun(ABC):
         self._database_columns: dict[str, dict[str, str]] = {}
         self.dims: list[Dim] = []
         self.plot_selection: list[str] = []
+        self.last_avg_subset: Dataset | None = None
 
     @property
     def database_columns(self) -> dict[str, dict[str, str]]:
@@ -249,7 +250,7 @@ class BaseRun(ABC):
                     self.update_subset_dims(old_dim, 'select_value', old_dim.select_index)
         dim.ui_selector.update()
 
-    def generate_subset(self):
+    def generate_subset(self, has_new_data: bool = False) -> Dataset:
         """
         Generate the subset of the full dataset based on the current dimension options.
         Returns:
@@ -261,12 +262,13 @@ class BaseRun(ABC):
         if self.dim_axis_option['y-axis'] is not None:
             plot_names.append(self.dim_axis_option['y-axis'].name)
         plot_names.append(self.dim_axis_option['x-axis'].name)
-        if set(plot_names) == set(last_non_avg_dims):
+        if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
             sub_set = self.last_avg_subset
             print(f"Re-using last averaged subset: {list(sub_set.dims)}")
         else:
             print(f"Averiging over {avg_names}")
             sub_set = self.full_data_set.mean(dim=avg_names)
+            self.update_select_sliders()
         self.last_avg_subset = sub_set
         sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
         print(f"Selecting subset with: {sel_dict}")
@@ -297,4 +299,13 @@ class BaseRun(ABC):
                 position='top-right'
             )
         print(f"{self.plot_selection= }")
-        build_xarray_grid()
+        build_xarray_grid(has_new_data=False)
+
+    def update_select_sliders(self):
+        """
+        Update the select sliders based on the current dimension options.
+        """
+        for dim in self.dim_axis_option['select_value']:
+            print(f"Updating slider for {dim.name}")
+            dim.slider._props["max"] = len(self.full_data_set[dim.name]) - 1
+            dim.slider.update()
