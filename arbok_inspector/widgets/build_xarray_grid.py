@@ -17,18 +17,13 @@ if TYPE_CHECKING:
     from arbok_inspector.classes.base_run import BaseRun
     from plotly.graph_objs import Figure
 
-
-def build_xarray_grid() -> None:
+def build_xarray_grid(has_new_data: bool = False) -> None:
     """
     Build a grid of xarray plots for the given run.
 
     Args:
-        run (Run): The Run object containing the data to plot.
-
-    Returns:
-        Figure: The Plotly Figure object containing the grid of plots.
+        has_new_data (bool): Flag indicating if there is new data to plot.
     """
-    #client = await ui.context.client.connected()
     print("\nBuilding xarray grid of plots")
     run = app.storage.tab["run"]
     container = app.storage.tab["placeholders"]['plots']
@@ -38,7 +33,7 @@ def build_xarray_grid() -> None:
             'Please select at least one dimension for the x-axis to display plots.<br>',
             color = 'red')
         return
-    ds = run.generate_subset()
+    ds = run.generate_subset(has_new_data=has_new_data)
     if len(ds.dims) == 1:
         create_1d_plot(run, ds, container)
     elif len(ds.dims) == 2:
@@ -48,7 +43,6 @@ def build_xarray_grid() -> None:
             'The selected dimensions result in more than 2D data.<br>'
             'Please select only 1 or 2 dimensions to plot)',
             color = 'red')
-        return None
 
 def create_1d_plot(run: BaseRun, ds: xr.Dataset, container: ui.Row) -> None:
     """
