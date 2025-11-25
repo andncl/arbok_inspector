@@ -1,7 +1,7 @@
 from nicegui import ui
 
 from arbok_inspector.state import inspector
-from arbok_inspector.pages import greeter, database_browser
+from arbok_inspector.pages import database_browser, greeter, run_view
 
 def run():
     ui.run(

@@ -148,4 +148,4 @@ async def reload_dataset_and_refresh_plots() -> None:
         run: BaseRun = app.storage.tab["run"]
         run.full_data_set = await nicegui_run.io_bound(run._load_dataset)
         ui.notify("Dataset reloaded", color='green')
-        build_xarray_grid()
+        build_xarray_grid(has_new_data=True)
