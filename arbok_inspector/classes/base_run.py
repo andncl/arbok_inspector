@@ -259,7 +259,7 @@ class BaseRun(ABC):
         last_non_avg_dims = list(self.last_avg_subset.dims)
         avg_names = [d.name for d in self.dim_axis_option['average']]
         plot_names = [d.name for d in self.dim_axis_option['select_value']]
-        if self.dim_axis_option['y-axis'] is not None:
+        if self.dim_axis_option['y-axis']:
             plot_names.append(self.dim_axis_option['y-axis'].name)
         plot_names.append(self.dim_axis_option['x-axis'].name)
         if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
