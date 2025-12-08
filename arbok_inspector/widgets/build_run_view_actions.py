@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import os
 import asyncio
+from io import BytesIO
 
 from nicegui import app, ui
 from nicegui import run as nicegui_run
@@ -113,20 +114,17 @@ def set_plots_per_column(value: int):
 def download_full_dataset():
     """Download the full dataset as a NetCDF file."""
     run = app.storage.tab["run"]
-    local_path = f'./run_{run.run_id}.nc'
-    run.full_data_set.to_netcdf(local_path)
-    ui.download.file(local_path)
-    os.remove(local_path)
+    netcfd_bytes = dataset_to_netcdf_bytes(run.full_data_set)
+    ui.download(netcfd_bytes.getvalue(), f"{run.run_id}.nc")
 
 def download_data_selection():
     """Download the current data selection as a NetCDF file."""
     run = app.storage.tab["run"]
-    local_path = f'./run_{run.run_id}_selection.nc'
-    run.last_subset.to_netcdf(local_path)
-    ui.download.file(local_path)
-    os.remove(local_path)
+    netcfd_bytes = dataset_to_netcdf_bytes(run.last_avg_subset)
+    ui.download(netcfd_bytes.getvalue(), f"{run.run_id}_selection.nc")
 
 def print_debug(run: BaseRun):
+    """Print debugging information about the current run."""
     print("\nDebugging BaseRun:")
     run = app.storage.tab["run"]
     for key, val in run.dim_axis_option.items():
@@ -149,3 +147,23 @@ async def reload_dataset_and_refresh_plots() -> None:
         run.full_data_set = await nicegui_run.io_bound(run._load_dataset)
         ui.notify("Dataset reloaded", color='green')
         build_xarray_grid(has_new_data=True)
+
+def dataset_to_netcdf_bytes(ds: xr.Dataset) -> BytesIO:
+    """
+    Convert an xarray Dataset to an in-memory NetCDF file (BytesIO)
+    using zlib compression.
+
+    Args:
+        ds (xr.Dataset): The xarray Dataset to convert.
+    Returns:
+        BytesIO: In-memory bytes buffer containing the NetCDF data.
+    """
+    buffer = BytesIO()
+    ds.to_netcdf(
+        buffer,
+        mode="w",
+        # format="NETCDF4",
+        # engine="netcdf4",
+    )
+    buffer.seek(0)
+    return buffer

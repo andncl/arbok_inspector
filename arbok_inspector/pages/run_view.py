@@ -72,9 +72,10 @@ async def run_page(run_id: str):
     with resources.files("arbok_inspector.configurations").joinpath("2d_plot.json").open("r") as f:
         app.storage.tab["plot_dict_2D"] = json.load(f)
 
-    ui.label(f'Run-ID: {run_id}').classes('text-2xl font-bold')
     with ui.row().classes('w-full gap-4'):
         with ui.column().classes('flex-none'):
+            with ui.card().classes('w-full gap-0 p-2'):
+                ui.label(f'Run-ID: {run_id}').classes('text-2xl font-bold')
             with ui.card().classes('w-full gap-2'):
                 ui.label("Coordinates:").classes('text-lg font-semibold pl-2')
                 ui.separator().classes('w-full my-1')
