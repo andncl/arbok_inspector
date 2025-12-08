@@ -50,8 +50,8 @@ async def database_browser_page():
     with ui.column().classes('w-full h-screen'):
         ui.add_head_html('<title>Arbok Inspector - Database general</title>')
         with ui.row().classes('w-full items-center justify-between'): # 
-            ui.label('Arbok Inspector').classes('text-3xl font-bold mb-1')
-            with ui.expansion('Database info and settings', icon='info', value=True)\
+            ui.label('Arbok Inspector 🐍🔎').classes('text-3xl font-bold mb-1')
+            with ui.expansion('Database info and settings', icon='info', value=False)\
                 .classes(EXPANSION_CLASSES).props('expand-separator'):
                 build_database_info_section()
 
@@ -86,7 +86,8 @@ def build_info_section():
 
 def _build_qcodes_db_info_section():
     if inspector.qcodes_database_path:
-        ui.label(f'Database Path: {str(inspector.qcodes_database_path)}')
+        ui.label(f'Database Path:')
+        ui.label(f'\t{str(inspector.qcodes_database_path)}')
 
 def _build_native_db_info_section():
     ui.label(f'Native database info placeholder')
@@ -102,6 +103,11 @@ def build_actions_section():
             ui.button(
                 text = 'Reload Days',
                 on_click=lambda: update_day_selector(),
+                color = '#4BA701'
+                ).props('dense').classes('w-full')
+            ui.button(
+                text = 'Reload Runs',
+                on_click= lambda: trigger_update_run_selector(None),
                 color = '#4BA701'
                 ).props('dense').classes('w-full')
 
@@ -132,21 +138,23 @@ def build_settings_section():
             app.storage.tab["result_keyword_input"] = ui.input(
                 label = 'auto-plot keywords',
                 placeholder="e.g:\t\t[ ( 'Q1' , 'state' ), 'feedback' ]"
-                ).props('rounded outlined dense')\
+                ).props('outlined dense')\
                 .classes('w-full')\
+                .style('border-radius: 4px;')\
                 .tooltip("""
-                    Selects all results that contain the specified keywords in their name.<br>
-                    Can be a single keyword (string) or a tuple of keywords.<br>
-                    The latter one requires all keywords to be present in the result name.<br>
+                    Selects all results that contain the specified keywords in their name.\n
+                    Can be a single keyword (string) or a tuple of keywords.\n
+                    The latter one requires all keywords to be present in the result name.\n
 
-                    The given example would select all results that contain 'Q1' and 'state' in their name<br>
+                    The given example would select all results that contain 'Q1' and 'state' in their name\n
                     or all results that contain 'feedback' in their name.
-                """).props('v-html')
+                """).classes('whitespace-pre-line')
             app.storage.tab["avg_axis_input"] = ui.input(
                 label = 'average-axis keyword',
                 value = "iteration"
-                ).props('rounded outlined dense')\
-                .classes('w-full')
+                ).props('outlined dense')\
+                .classes('w-full')\
+                .style('border-radius: 4px;')
 
             with ui.row().classes('items-center gap-2'):
                 ui.label("Auto-refresh")
