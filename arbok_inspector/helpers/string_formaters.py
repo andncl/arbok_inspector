@@ -13,7 +13,8 @@ def title_formater(run):
     """
     title = ""
     for dim in run.dim_axis_option["select_value"]:
-        title += f"{dim.name} = {unit_formatter(run, dim, dim.select_index)}<br>"
+        title += f"{dim.name.replace('__', '.')} = "
+        title += f"{unit_formatter(run, dim, dim.select_index)}<br>"
     return title
 
 def axis_label_formater(ds: xr.DataArray, dim_name: str) -> str:
