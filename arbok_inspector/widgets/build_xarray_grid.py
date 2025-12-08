@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 
 import math
 import copy
+from pathlib import Path
 import plotly.graph_objects as go
 from nicegui import ui, app
 
-from arbok_inspector.helpers.unit_formater import unit_formatter
 from arbok_inspector.helpers.string_formaters import (
     title_formater, axis_label_formater
 )
@@ -69,7 +69,7 @@ def create_1d_plot(run: BaseRun, ds: xr.Dataset, container: ui.Row) -> None:
 
     plot_dict["data"] = traces
     plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(ds, x_dim)
-    plot_dict["layout"]["title"]["text"] = title_formater(run)
+    plot_dict = add_title_to_plot_dict(run, plot_dict, None)
 
     with container:
         fig = go.Figure(plot_dict)
@@ -106,8 +106,10 @@ def create_2d_grid(run: BaseRun, ds, container) -> dict:
     plot_dict = copy.deepcopy(app.storage.tab["plot_dict_2D"])
     plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(ds, x_dim)
     plot_dict["layout"]["yaxis"]["title"]["text"] = axis_label_formater(ds, y_dim)
+    plot_dict["layout"]["yaxis"]["automargin"] = True
+    plot_dict["layout"]["xaxis"]["automargin"] = True
     plot_idx = 0
-    def create_2d_plot(plot_idx):
+    def create_2d_plot(plot_dict, plot_idx):
         key = keys[plot_idx]
         da = ds[key]
         if da[x_dim].dims[0] != da.dims[1]:
@@ -116,8 +118,8 @@ def create_2d_grid(run: BaseRun, ds, container) -> dict:
         plot_dict["data"][0]["z"] = da.values.tolist()
         plot_dict["data"][0]["x"] = da.coords[x_dim].values.tolist()
         plot_dict["data"][0]["y"] = da.coords[y_dim].values.tolist()
-        plot_dict["layout"]["title"]["text"] = (
-            f"<b>{pretty_keys[plot_idx]}</b><br>{title_formater(run)}")
+        plot_dict = add_title_to_plot_dict(run, plot_dict, pretty_keys[plot_idx])
+
         return go.Figure(plot_dict)
 
     run.plots = []
@@ -129,7 +131,7 @@ def create_2d_grid(run: BaseRun, ds, container) -> dict:
                     for col in range(num_columns):
                         if plot_idx >= num_plots:
                             break
-                        fig = create_2d_plot(plot_idx)
+                        fig = create_2d_plot(plot_dict,plot_idx)
                         run.figures.append(fig)
                         width_percent = 100 / num_columns - 2
                         height_percent = 100 / num_rows - 2
@@ -142,3 +144,33 @@ def create_2d_grid(run: BaseRun, ds, container) -> dict:
                             run.plots.append(plot)
                         plot_idx += 1
     app.storage.tab["plot_dict_2D"] = plot_dict
+
+def add_title_to_plot_dict(run: BaseRun, plot_dict: dict, result_name: str) -> dict:
+    """
+    Generate a title string for the plots based on selected dimensions.
+
+    Args:
+        run: The Run object containing the data.
+        plot_dict: The plotly figure dictionary to update.
+        result_name: The name of the result being plotted.
+    Returns:
+        dict: The updated plotly figure dictionary with the title.
+    """
+    title_font_size = 10
+    run = app.storage.tab["run"]
+    if hasattr(run, 'db_path') and hasattr(run, 'run_id'):
+        db_path = Path(run.db_path).resolve()
+        title_string = f"Run ID: {run.run_id} -- <i>{db_path}</i><br>"
+    else:
+        title_string = ""
+    if result_name is not None:
+        title_string += f"<b>{result_name}</b><br>"
+    title_string += f"{title_formater(run)}"
+    num_lines = title_string.count("<br>") + 1
+    plot_dict["layout"].setdefault("margin", {})
+    plot_dict["layout"]["title"]["y"] = 0.97
+    plot_dict["layout"]["title"]["yanchor"] = "top"
+    plot_dict["layout"]["title"]["font"]["size"] = title_font_size
+    plot_dict["layout"]["title"]["text"] = title_string
+    plot_dict["layout"]["margin"]["t"] = num_lines * 1.3*title_font_size
+    return plot_dict
