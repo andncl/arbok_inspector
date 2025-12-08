@@ -49,7 +49,7 @@ async def database_browser_page():
 
     with ui.column().classes('w-full h-screen'):
         ui.add_head_html('<title>Arbok Inspector - Database general</title>')
-        with ui.row().classes('w-full items-center justify-between'):
+        with ui.row().classes('w-full items-center justify-between'): # 
             ui.label('Arbok Inspector').classes('text-3xl font-bold mb-1')
             with ui.expansion('Database info and settings', icon='info', value=True)\
                 .classes(EXPANSION_CLASSES).props('expand-separator'):
@@ -70,14 +70,14 @@ def open_run_page(run_id: int):
 
 def build_database_info_section():
     """Build the database information and settings section."""
-    with ui.row().classes('w-full'):
+    with ui.row().classes('w-full items-stretch'):
         build_info_section()
         build_actions_section()
         build_settings_section()
 
 def build_info_section():
     """Build the database information section."""
-    with ui.card().classes('w-1/3'):
+    with ui.card().classes('w-1/3 flex-col'):
         ui.label('Database Information').classes('text-xl font-semibold mb-4')
         if inspector.database_type == 'qcodes':
             _build_qcodes_db_info_section()
@@ -93,35 +93,17 @@ def _build_native_db_info_section():
 
 def build_actions_section():
     """Build the database action buttons section."""
-    with ui.card().classes('w-1/4 h-full'):
+    with ui.card().classes('w-1/4 flex-col'):
         with ui.column().classes('w-full justify-start'):
             ui.button(
-                text = 'Select New Database',
+                text = 'Other Database',
                 on_click=lambda: ui.navigate.to('/'),
-                color='purple').props('dense').classes()
+                color='purple').props('dense').classes('w-full')
             ui.button(
-                text = 'Reload',
+                text = 'Reload Days',
                 on_click=lambda: update_day_selector(),
                 color = '#4BA701'
-                ).props('dense').classes()
-            with ui.row().classes('items-center gap-2'):
-                timer = ui.timer(
-                    interval=DEFAULT_REFRESH_INTERVAL_S,
-                    callback=  lambda: trigger_update_run_selector(None),
-                    active=False
-                    )
-                # ui.label('Auto-plot')
-                ui.switch(
-                    on_change=lambda e: setattr(timer, 'active', e.value)
-                )
-                ui.number(
-                    # label='(s)',
-                    value=DEFAULT_REFRESH_INTERVAL_S,
-                    min=0.1,
-                    step=0.1,
-                    format='%.1f',
-                    on_change=lambda e: on_interval_change(e, timer),
-                ).props('dense suffix="s"').classes('w-12')
+                ).props('dense').classes('w-full')
 
 def on_interval_change(e, timer) -> None:
     """
@@ -145,7 +127,7 @@ def on_interval_change(e, timer) -> None:
 
 def build_settings_section():
     """Build the database settings section."""
-    with ui.card().classes('w-1/3'):
+    with ui.card().classes('w-1/3 flex-col'):
         with ui.row().classes('w-full'):
             app.storage.tab["result_keyword_input"] = ui.input(
                 label = 'auto-plot keywords',
@@ -165,3 +147,23 @@ def build_settings_section():
                 value = "iteration"
                 ).props('rounded outlined dense')\
                 .classes('w-full')
+
+            with ui.row().classes('items-center gap-2'):
+                ui.label("Auto-refresh")
+                timer = ui.timer(
+                    interval=DEFAULT_REFRESH_INTERVAL_S,
+                    callback=  lambda: trigger_update_run_selector(None),
+                    active=False
+                    )
+                # ui.label('Auto-plot')
+                ui.switch(
+                    on_change=lambda e: setattr(timer, 'active', e.value)
+                )
+                ui.number(
+                    # label='(s)',
+                    value=DEFAULT_REFRESH_INTERVAL_S,
+                    min=0.1,
+                    step=0.1,
+                    format='%.1f',
+                    on_change=lambda e: on_interval_change(e, timer),
+                ).props('dense suffix="s"').classes('w-12')
