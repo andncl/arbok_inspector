@@ -12,10 +12,8 @@ from qcodes.dataset import load_by_id
 from qcodes.dataset.sqlite.database import get_DB_location
 from qcodes import config as qc_config
 from qcodes.dataset.sqlite.database import initialise_or_create_database_at, connect
-from qcodes.dataset import load_by_id
 
 from arbok_inspector.classes.base_run import BaseRun
-from arbok_inspector.state import inspector
 
 if TYPE_CHECKING:
     from xarray import Dataset
