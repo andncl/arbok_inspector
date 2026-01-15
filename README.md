@@ -64,8 +64,3 @@ Contributions, bug reports, and small feature requests are welcome. If you want 
 License
 
 See the `LICENSE` file in the project root for license details.
-
-Notes & tips
-
-- For exact runtime dependencies check `pyproject.toml` — prefer using that manifest (and a virtual environment) for reproducible installs.
-- If you want me to add a short walkthrough for common tasks (open a run, plot data, export CSV), tell me which task you'd like first and I can add a step-by-step example here. 📘
