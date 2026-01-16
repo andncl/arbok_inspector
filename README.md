@@ -1,4 +1,4 @@
-# arbok-inspector 🐍
+# arbok-inspector 🐍🔎
 [![PyPI](https://img.shields.io/pypi/v/arbok-inspector.svg)](https://pypi.org/project/arbok-inspector/)
 [![Python](https://img.shields.io/pypi/pyversions/arbok-driver.svg)](https://pypi.org/project/arbok-driver/)
 [![License](https://img.shields.io/github/license/andncl/arbok_driver.svg)](LICENSE)
@@ -7,7 +7,7 @@ arbok_inspector is an browser based inspection and visualization utility for QCo
 databases.
 It provides a lightweight GUI and CLI to browse runs and visualize data. 
 
-## Features 🔎
+## Features 🛠️
 The most commonly used used tool to visualize QCoDeS databases is
 [plottr](https://github.com/toolsforexperiments/plottr).
 Plottr is a great tool to get started, but struggles with increasing abounts of data.
