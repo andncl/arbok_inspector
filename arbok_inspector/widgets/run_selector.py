@@ -1,3 +1,4 @@
+"""Module containing functions to build run selector grid"""
 import json
 from datetime import datetime, timedelta
 
@@ -34,18 +35,17 @@ def build_run_selector(target_day: str | None = None) -> ui.aggrid:
         target_day: str = app.storage.tab.get('last_selected_day')
     run_grid_rows, run_grid_columns = get_run_grid_data(target_day)
     run_grid = ui.aggrid(
-            {
-                'defaultColDef': {'flex': 1, 'minWidth': 50},
-                'columnDefs': run_grid_columns,
-                'rowData': run_grid_rows,
-                'rowSelection': 'multiple',
-            },
-        ).classes('ag-theme-balham-dark').style(
-            AGGRID_STYLE
-        ).on(
-            'cellClicked',
-            lambda event: open_run_page(event.args['data']['run_id'])
-        )
+        {
+            'columnDefs': run_grid_columns,
+            'rowData': run_grid_rows,
+            'theme': 'balham'
+        }, 
+    ).style(
+        AGGRID_STYLE
+    ).on(
+        'cellClicked',
+        lambda event: open_run_page(event.args['data']['run_id'])
+    )
     ui.notify(
         'Run selector updated: \n'
         f'found {len(run_grid_rows)} run(s)',
