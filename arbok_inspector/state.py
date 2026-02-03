@@ -7,7 +7,7 @@ from qcodes.dataset import initialise_or_create_database_at
 
 import fsspec
 import sqlite3
-from sqlalchemy import create_engine, select, func
+from sqlalchemy import create_engine
 
 class ArbokInspector:
     def __init__(self):

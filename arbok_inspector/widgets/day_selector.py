@@ -26,12 +26,10 @@ def build_day_selector() -> ui.aggrid:
     """Build the day selector grid."""
     day_grid = ui.aggrid(
         {
-            'defaultColDef': {'flex': 1},
             'columnDefs': DAY_GRID_COLUMN_DEFS,
             'rowData': {},
-            'rowSelection': 'multiple',
-        },
-        theme = 'ag-theme-balham-dark')\
+            'theme': 'balham'
+        },)\
         .classes('text-sm ag-theme-balham-dark')\
         .style(AGGRID_STYLE)\
         .on(

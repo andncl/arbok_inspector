@@ -209,7 +209,7 @@ def build_dim_slider(run: BaseRun, dim: Dim):
                 on_change=lambda e: run.update_subset_dims(dim, 'select_value', e.value),
                 ).classes('flex-grow')\
                 .props('color="purple" markers')
-        dim.select_label = ui.html('').classes(
+        dim.select_label = ui.html(content = '', sanitize = False).classes(
             'shrink-0 text-right px-2 py-1 bg-purple text-white rounded-lg text-xs font-normal text-center')
         update_value_from_dim_slider(
             dim.select_label, dim.slider, dim, plot = False)

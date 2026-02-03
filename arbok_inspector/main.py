@@ -1,3 +1,4 @@
+"""Module containing launching script for main application"""
 from nicegui import ui
 
 from arbok_inspector.state import inspector

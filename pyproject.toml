@@ -13,7 +13,7 @@ classifiers = [
 ]
 dependencies = [
     "minio ~= 7.2",
-    "nicegui>=2.24.2",
+    "nicegui~=3.6",
     "nodejs>=0.1.1",
     "plotly>=6.3.0",
     "psycopg2-binary ~= 2.9",
@@ -25,9 +25,23 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+dev = [
+    "pytest~=9.0",
+    "pytest-cov~=7.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools_scm]
 version_scheme = "post-release"
 local_scheme = "no-local-version"
+
+[tool.setuptools.package-data]
+arbok_inspector = [
+    "configurations/*.json",
+]
 
 [project.scripts]
 arbok-inspector = "arbok_inspector.main:run"
