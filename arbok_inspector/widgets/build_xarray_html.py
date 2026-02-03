@@ -47,11 +47,15 @@ def build_xarray_html():
             background-color: transparent !important;
         }
         </style>
-        ''')
+        ''',
+        sanitize = False
+        )
 
         # Wrap the dataset HTML in a div with that class
         ui.html(f'''
         <div class="xarray-dark-wrapper">
         {ds._repr_html_()}
         </div>
-        ''')
+        ''',
+        sanitize = False
+        )
