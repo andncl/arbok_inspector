@@ -58,9 +58,10 @@ async def run_page(run_id: str):
         app.storage.tab["run"] = run
     except Exception as e:
         loading_dialog.close()
-        ui.notify(f"Error loading run: {e}", type="error", close_button="OK")
+        ui.notify(f"Error loading run: {e}", type="negative", close_button="OK")
         print("Error in create_run:", e)
-        ui.label("Failed to load run!")
+        ui.label(f"Failed to load run! {run_id}")
+        raise e
         return
     finally:
         if loading_dialog.visible:
@@ -109,7 +110,7 @@ async def run_page(run_id: str):
                     ui.label(value).classes("m-0 p-0 ml-5")
 
         with ui.column().classes('flex-1 min-w-0'):
-            with ui.expansion('Plots', icon='stacked_line_chart', value=True)\
+            with ui.expansion(f'plot: {run.name}', icon='stacked_line_chart', value=True)\
                 .classes(EXPANSION_CLASSES):
                 app.storage.tab["placeholders"]["plots"] = ui.row().\
                     classes('w-full min-h-[50vh] p-1 items-stretch')

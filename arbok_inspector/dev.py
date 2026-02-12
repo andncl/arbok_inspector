@@ -1,3 +1,11 @@
+"""
+Module containing launching script for the arbok-inspector in editable mode
+
+This needs to be separate from the 'main' script since nicegui doesnt allow
+indirect entry points when launching in editable mode (reload).
+
+Hence we are using dev:run and not main:main
+"""
 from nicegui import ui
 
 from arbok_inspector.state import inspector
@@ -13,5 +21,8 @@ def run():
         reload = True
     )
 
-if __name__ in {"__main__", "__mp_main__"}:
+def main() -> None:
     run()
+
+if __name__ in {"__main__", "__mp_main__"}:
+    main()

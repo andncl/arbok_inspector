@@ -183,14 +183,14 @@ requires-dist = [
     { name = "minio", specifier = "~=7.2" },
     { name = "nicegui", specifier = "~=3.6" },
     { name = "nodejs", specifier = ">=0.1.1" },
-    { name = "plotly", specifier = ">=6.3.0" },
+    { name = "plotly", specifier = "~=6.5" },
     { name = "psycopg2-binary", specifier = "~=2.9" },
     { name = "pytest", marker = "extra == 'dev'", specifier = "~=9.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = "~=7.0" },
-    { name = "qcodes", specifier = ">=0.53.0" },
+    { name = "qcodes", specifier = "~=0.54.4" },
     { name = "s3fs", specifier = "~=2025.9" },
     { name = "sqlalchemy", specifier = "~=2.0" },
-    { name = "xarray", specifier = ">=2025.9.0" },
+    { name = "xarray", specifier = "~=2026.1" },
     { name = "zarr", specifier = "~=2.18" },
 ]
 provides-extras = ["dev"]
@@ -1422,6 +1422,15 @@ wheels = [
 ]
 
 [[package]]
+name = "networkx"
+version = "3.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/51/63fe664f3908c97be9d2e4f1158eb633317598cfa6e1fc14af5383f17512/networkx-3.6.1.tar.gz", hash = "sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509", size = 2517025, upload-time = "2025-12-08T17:02:39.908Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/c9/b2622292ea83fbb4ec318f5b9ab867d0a28ab43c5717bb85b0a5f6b3b0a4/networkx-3.6.1-py3-none-any.whl", hash = "sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762", size = 2068504, upload-time = "2025-12-08T17:02:38.159Z" },
+]
+
+[[package]]
 name = "nicegui"
 version = "3.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1767,15 +1776,15 @@ wheels = [
 
 [[package]]
 name = "plotly"
-version = "6.3.0"
+version = "6.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "narwhals" },
     { name = "packaging" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/64/850de5076f4436410e1ce4f6a69f4313ef6215dfea155f3f6559335cad29/plotly-6.3.0.tar.gz", hash = "sha256:8840a184d18ccae0f9189c2b9a2943923fd5cae7717b723f36eef78f444e5a73", size = 6923926, upload-time = "2025-08-12T20:22:14.127Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/4f/8a10a9b9f5192cb6fdef62f1d77fa7d834190b2c50c0cd256bd62879212b/plotly-6.5.2.tar.gz", hash = "sha256:7478555be0198562d1435dee4c308268187553cc15516a2f4dd034453699e393", size = 7015695, upload-time = "2026-01-14T21:26:51.222Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/a9/12e2dc726ba1ba775a2c6922d5d5b4488ad60bdab0888c337c194c8e6de8/plotly-6.3.0-py3-none-any.whl", hash = "sha256:7ad806edce9d3cdd882eaebaf97c0c9e252043ed1ed3d382c3e3520ec07806d4", size = 9791257, upload-time = "2025-08-12T20:22:09.205Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/67/f95b5460f127840310d2187f916cf0023b5875c0717fdf893f71e1325e87/plotly-6.5.2-py3-none-any.whl", hash = "sha256:91757653bd9c550eeea2fa2404dba6b85d1e366d54804c340b2c874e5a7eb4a4", size = 9895973, upload-time = "2026-01-14T21:26:47.135Z" },
 ]
 
 [[package]]
@@ -2301,7 +2310,7 @@ wheels = [
 
 [[package]]
 name = "qcodes"
-version = "0.53.0"
+version = "0.54.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "broadbean" },
@@ -2310,10 +2319,10 @@ dependencies = [
     { name = "h5netcdf" },
     { name = "h5py" },
     { name = "ipykernel" },
-    { name = "ipython" },
     { name = "ipywidgets" },
     { name = "jsonschema" },
     { name = "matplotlib" },
+    { name = "networkx" },
     { name = "numpy" },
     { name = "opentelemetry-api" },
     { name = "packaging" },
@@ -2323,18 +2332,16 @@ dependencies = [
     { name = "pyvisa" },
     { name = "ruamel-yaml" },
     { name = "tabulate" },
-    { name = "tornado" },
     { name = "tqdm" },
     { name = "typing-extensions" },
     { name = "uncertainties" },
     { name = "versioningit" },
     { name = "websockets" },
-    { name = "wrapt" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/02/dd/c4afcc2899077eeba3b58509754fedc1d005cde0daa1ef94522bc4754b18/qcodes-0.53.0.tar.gz", hash = "sha256:bc0791e2d206fac7d0cf1642c542361fe41f7d29c540128a83875bf188a18e52", size = 802878, upload-time = "2025-06-17T12:54:17.028Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/3b/38c613958911c7ea14d852632042e834749558416eea6b93761802bdf6da/qcodes-0.54.4.tar.gz", hash = "sha256:949cf3907fda1af176f545ee7aa3853119204a4c34beafef3fd569aa46521d9a", size = 817999, upload-time = "2025-12-12T17:39:33.878Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/80/6a/a4cdf53e8899f2f910417b0114ff8d151a3feb9b4f6556c8a6cc81960e81/qcodes-0.53.0-py3-none-any.whl", hash = "sha256:a1029cc3f8cf5e6eda827ec2150f955a37b9d21296ed6d582d289e71f406210f", size = 953757, upload-time = "2025-06-17T12:54:15.088Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/ee/a08a9240e25b132f1becc86609ccf98f1261a06370aec3ef6458519962e7/qcodes-0.54.4-py3-none-any.whl", hash = "sha256:29df1dfe9b84ae38c03342eb035e7c0523ff3824a51ff45c858cbb04212a7162", size = 977283, upload-time = "2025-12-12T17:39:31.669Z" },
 ]
 
 [[package]]
@@ -2928,16 +2935,16 @@ wheels = [
 
 [[package]]
 name = "xarray"
-version = "2025.9.0"
+version = "2026.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "packaging" },
     { name = "pandas" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/0b/bbb76e05c8e2099baf90e259c29cafe6a525524b1d1da8bfbc39577c043e/xarray-2025.9.0.tar.gz", hash = "sha256:7dd6816fe0062c49c5e9370dd483843bc13e5ed80a47a9ff10baff2b51e070fb", size = 3040318, upload-time = "2025-09-04T04:20:26.296Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/85/113ff1e2cde9e8a5b13c2f0ef4e9f5cd6ca3a036b6452f4dd523419289b5/xarray-2026.1.0.tar.gz", hash = "sha256:0c9814761f9d9a9545df37292d3fda89f83201f3e02ae0f09f03313d9cfdd5e2", size = 3107024, upload-time = "2026-01-28T17:49:03.822Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8d/f0/73c24457c941b8b08f7d090853e40f4b2cdde88b5da721f3f28e98df77c9/xarray-2025.9.0-py3-none-any.whl", hash = "sha256:79f0e25fb39571f612526ee998ee5404d8725a1db3951aabffdb287388885df0", size = 1349595, upload-time = "2025-09-04T04:20:24.36Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/8e/952a351c10df395d9bab850f611f4368834ae9104d6449049f5a49e00925/xarray-2026.1.0-py3-none-any.whl", hash = "sha256:5fcc03d3ed8dfb662aa254efe6cd65efc70014182bbc2126e4b90d291d970d41", size = 1403009, upload-time = "2026-01-28T17:49:01.538Z" },
 ]
 
 [[package]]

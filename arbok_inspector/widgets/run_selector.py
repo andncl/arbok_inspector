@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timedelta
 
 from nicegui import ui, app
+from nicegui import run as nicegui_run
 from sqlalchemy import text
 
 from arbok_inspector.state import inspector
@@ -29,11 +30,11 @@ NATIVE_RUN_GRID_COLUMN_DEFS = [
 ]
 AGGRID_STYLE = 'height: 95%; min-height: 0;'
 
-def build_run_selector(target_day: str | None = None) -> ui.aggrid:
+async def build_run_selector(target_day: str | None = None) -> ui.aggrid:
     """Build the run selector grid for the specified day."""
     if target_day is None:
         target_day: str = app.storage.tab.get('last_selected_day')
-    run_grid_rows, run_grid_columns = get_run_grid_data(target_day)
+    run_grid_rows, run_grid_columns = await get_run_grid_data(target_day)
     run_grid = ui.aggrid(
         {
             'columnDefs': run_grid_columns,
@@ -43,7 +44,7 @@ def build_run_selector(target_day: str | None = None) -> ui.aggrid:
     ).style(
         AGGRID_STYLE
     ).on(
-        'cellClicked',
+        'rowClicked',
         lambda event: open_run_page(event.args['data']['run_id'])
     )
     ui.notify(
@@ -56,12 +57,12 @@ def build_run_selector(target_day: str | None = None) -> ui.aggrid:
     )
     return run_grid
 
-def update_run_selector(target_day: str | None = None) -> None:
+async def update_run_selector(target_day: str | None = None) -> None:
     """Update the run selector grid based on the last selected day."""
     if target_day is None:
         target_day: str = app.storage.tab.get('last_selected_day')
     run_grid: ui.aggrid = app.storage.tab.get('run_grid')
-    run_grid_rows, _ = get_run_grid_data(target_day)
+    run_grid_rows, _ = await get_run_grid_data(target_day)
     ui.run_javascript(f"""
         const grid = getElement('{run_grid.id}');
         if (grid && grid.api) {{
@@ -69,7 +70,7 @@ def update_run_selector(target_day: str | None = None) -> None:
         }}
     """)
 
-def get_run_grid_data(target_day: str) -> tuple[list[dict], list[dict]]:
+async def get_run_grid_data(target_day: str) -> tuple[list[dict], list[dict]]:
     """
     Fetch run data for the specified day from the database.
     
@@ -82,12 +83,29 @@ def get_run_grid_data(target_day: str) -> tuple[list[dict], list[dict]]:
     offset_hours = app.storage.general["timezone"]
     run_grid_rows = []
     print(f"Showing runs from {target_day}")
-    if inspector.database_type == 'qcodes':
-        rows = get_qcodes_runs_for_day(inspector.cursor, target_day, offset_hours)
-        run_grid_columns = QCODES_RUN_GRID_COLUMN_DEFS
-    else:
-        rows = get_native_arbok_runs_for_day(inspector.database_engine, target_day, offset_hours)
-        run_grid_columns = NATIVE_RUN_GRID_COLUMN_DEFS
+    with ui.dialog() as loading_dialog:
+        with ui.card().classes('p-6 items-center'):
+            ui.label('Loading dataset...')
+            ui.spinner(size='lg')
+    loading_dialog.open()
+    await ui.run_javascript('await new Promise(r => setTimeout(r, 0));')
+
+    try:
+        rows, run_grid_columns = await nicegui_run.io_bound(
+            get_runs_for_day,
+            target_day = target_day,
+            offset_hours = offset_hours,
+        )
+    except Exception as e:
+        loading_dialog.close()
+        ui.notify(f"Error loading run: {e}", type="negative", close_button="OK")
+        print("Error in create_run:", e)
+        ui.label(f"Failed to load runs for day ({target_day})!\n{e}")
+        rows = []
+        run_grid_columns = {}
+    finally:
+        if loading_dialog.visible:
+            loading_dialog.close()
     run_grid_rows = []
     columns = [x['field'] for x in run_grid_columns]
     for run in rows:
@@ -106,37 +124,61 @@ def get_run_grid_data(target_day: str) -> tuple[list[dict], list[dict]]:
         run_grid_rows.insert(0, run_dict)
     return run_grid_rows, run_grid_columns
 
+def get_runs_for_day(
+        target_day, offset_hours) -> tuple[list[dict], list[dict]]:
+    if inspector.database_type == 'qcodes':
+        rows = get_qcodes_runs_for_day(target_day, offset_hours)
+        run_grid_columns = QCODES_RUN_GRID_COLUMN_DEFS
+    else:
+        rows = get_native_arbok_runs_for_day(
+            inspector.database_engine, target_day, offset_hours)
+        run_grid_columns = NATIVE_RUN_GRID_COLUMN_DEFS
+    return rows, run_grid_columns
+
 def get_qcodes_runs_for_day(
-    cursor, target_day: str, offset_hours: float
+    target_day: str, offset_hours: float
 ) -> list[dict]:
     """
     Fetch runs from a QCoDeS (SQLite) database, joined with experiments,
     excluding the 'qua_program' and 'snapshot' columns entirely.
     """
+    import sqlite3
+    conn = sqlite3.connect(str(inspector.qcodes_database_path))
+    conn.row_factory = sqlite3.Row
     hours = int(offset_hours)
     minutes = int((offset_hours - hours) * 60)
     offset_str = f"{'+' if offset_hours >= 0 else '-'}{abs(hours):02d}:{abs(minutes):02d}"
 
     # get all columns except the ones we want to exclude
-    exclude_columns = {'qua_program', 'snapshot'}
-    cursor.execute("PRAGMA table_info(runs)")
-    all_columns = [col['name'] for col in cursor.fetchall() if col['name'] not in exclude_columns]
-
-    # construct SELECT statement
-    columns_str = ", ".join(f"r.{col}" for col in all_columns)
-
-    query = f"""
-        SELECT {columns_str}, e.name AS experiment_name
-        FROM runs r
-        JOIN experiments e ON r.exp_id = e.exp_id
-        WHERE DATE(datetime(r.run_timestamp, 'unixepoch', '{offset_str}')) = ?
-        ORDER BY r.run_timestamp;
-    """
-
-    cursor.execute(query, (target_day,))
-    rows = cursor.fetchall()
-    row_dicts = [dict(row) for row in rows]
-    return row_dicts
+    exclude_columns = {
+        'qua_program', 'snapshot', 'run_description',
+        'measurement_exception', 'parameters'
+        }
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(runs)")
+        columns = cursor.fetchall()
+        all_columns = [
+            col['name'] for col in columns
+            if col['name'] not in exclude_columns
+            ]
+        columns_str = ", ".join(f"r.{col}" for col in all_columns)
+        query = f"""
+            SELECT {columns_str}, e.name AS experiment_name
+            FROM runs r
+            JOIN experiments e ON r.exp_id = e.exp_id
+            WHERE DATE(datetime(r.run_timestamp, 'unixepoch', '{offset_str}')) = ?
+            ORDER BY r.run_timestamp;
+        """
+        cursor.execute(query, (target_day,))
+        rows = cursor.fetchall()
+        print(dict(rows[0]) )
+        row_dicts = [dict(row) for row in rows]
+        return row_dicts
+    except Exception as e:
+        raise e
+    finally:
+        conn.close()
 
 NATIVE_COLUMNS = {
     'run_id': 'run ID',

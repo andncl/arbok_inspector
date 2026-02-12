@@ -15,12 +15,12 @@ dependencies = [
     "minio ~= 7.2",
     "nicegui~=3.6",
     "nodejs>=0.1.1",
-    "plotly>=6.3.0",
+    "plotly~=6.5",
     "psycopg2-binary ~= 2.9",
     "s3fs~=2025.9",
     "SQLAlchemy ~= 2.0",
-    "qcodes>=0.53.0",
-    "xarray>=2025.9.0",
+    "qcodes~=0.54.4",
+    "xarray~=2026.1",
     "zarr ~= 2.18"
 ]
 dynamic = ["version"]
@@ -44,8 +44,8 @@ arbok_inspector = [
 ]
 
 [project.scripts]
-arbok-inspector = "arbok_inspector.main:run"
-arbok-inspector-dev = "arbok_inspector.dev:run"
+arbok-inspector = "arbok_inspector.main:main"
+arbok-inspector-dev = "arbok_inspector.dev:main"
 
 [tool.uv]
 package = true
