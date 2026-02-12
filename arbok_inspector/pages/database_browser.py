@@ -59,7 +59,7 @@ async def database_browser_page():
             with ui.column().style('width: 120px;').classes('h-full'):
                 app.storage.tab['day_grid'] = build_day_selector()
             with ui.column().classes('flex-1').classes('h-full'):
-                app.storage.tab['run_grid'] = build_run_selector()
+                app.storage.tab['run_grid'] = await build_run_selector()
 
 def open_run_page(run_id: int):
     app.storage.general["avg_axis"] = app.storage.tab["avg_axis_input"].value
