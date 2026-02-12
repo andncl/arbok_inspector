@@ -60,7 +60,8 @@ async def run_page(run_id: str):
         loading_dialog.close()
         ui.notify(f"Error loading run: {e}", type="negative", close_button="OK")
         print("Error in create_run:", e)
-        ui.label("Failed to load run!")
+        ui.label(f"Failed to load run! {run_id}")
+        raise e
         return
     finally:
         if loading_dialog.visible:
