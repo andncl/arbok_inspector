@@ -77,6 +77,11 @@ class QcodesRun(BaseRun):
         return columns_and_values
 
     def get_qua_code(self, as_string: bool = False) -> str | bytes:
+        # Check if the QUA code is saved in blueprint metadata, otherwise look for an adjacent RUN_ID.py file
+        if "Serialized_QUA_prog" in self.full_data_set.attrs.keys():
+            return self.full_data_set.attrs["Serialized_QUA_prog"]
+            # return self.full_data_set.attrs["Serialized_QUA_prog"].encode("utf-8")
+
         db_path = os.path.abspath(get_DB_location())
         db_name = db_path.split('/')[-1].split('.db')[0]
         db_dir = os.path.dirname(db_path)

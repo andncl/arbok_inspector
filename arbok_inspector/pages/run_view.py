@@ -11,6 +11,7 @@ from arbok_inspector.state import inspector
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
 from arbok_inspector.widgets.build_xarray_html import build_xarray_html
 from arbok_inspector.widgets.build_run_view_actions import build_run_view_actions
+from arbok_inspector.widgets.build_analysis_selector import build_analysis_selector
 from arbok_inspector.helpers.unit_formater import unit_formatter
 from arbok_inspector.classes.qcodes_run import QcodesRun
 from arbok_inspector.classes.native_run import NativeRun
@@ -121,8 +122,7 @@ async def run_page(run_id: str):
                 build_xarray_html()
             with ui.expansion('analysis', icon='science', value=False)\
                 .classes(EXPANSION_CLASSES):
-                with ui.row():
-                    ui.label("Working on it!  -Andi").classes(TITLE_CLASSES)
+                build_analysis_selector()
             with ui.expansion('metadata', icon='numbers', value=False)\
                 .classes(f"{EXPANSION_CLASSES}  overflow-x-auto"):
                 placeholder_metadata = {}
