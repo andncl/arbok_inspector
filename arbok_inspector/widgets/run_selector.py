@@ -39,12 +39,12 @@ async def build_run_selector(target_day: str | None = None) -> ui.aggrid:
         {
             'columnDefs': run_grid_columns,
             'rowData': run_grid_rows,
-            'theme': 'balham'
+            'theme': 'balham',
         }, 
     ).style(
         AGGRID_STYLE
     ).on(
-        'rowClicked',
+        'cellDoubleClicked',
         lambda event: open_run_page(event.args['data']['run_id'])
     )
     ui.notify(
