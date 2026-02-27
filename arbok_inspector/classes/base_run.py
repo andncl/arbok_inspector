@@ -22,7 +22,7 @@ class BaseRun(ABC):
     Class representing a run with its data and methods
     """
     full_data_set: Dataset
-    last_avg_subset: Dataset
+    last_avg_subset: Dataset | None
     name: str
 
     def __init__(self, run_id: int):
@@ -40,8 +40,8 @@ class BaseRun(ABC):
         self._database_columns: dict[str, dict[str, str]] = {}
         self.dims: list[Dim] = []
         self.plot_selection: list[str] = []
-        self.last_avg_subset: Dataset | None = None
-        self.result_axes: dict[str, dict[str, list[Dim]]] = {}  # {result_var: {type: [dim]}}
+        self.last_avg_subset = None
+        self.result_axes: dict[str, dict[str, list[Dim]]] = {}
 
     @property
     def database_columns(self) -> dict[str, dict[str, str]]:
@@ -151,15 +151,15 @@ class BaseRun(ABC):
             # if app.storage.general["avg_axis"]:
             #     for dim in var_dims:
 
-            available = [d for d in self.dims if d.name in var_dims]
-            if len(available) >= 2:
-                y_axis = available.pop(-2)
+            dims_available = [d for d in self.dims if d.name in var_dims]
+            if len(dims_available) >= 2:
+                y_axis = dims_available.pop(-2)
                 y_axis.option = "y-axis"
 
-                x_axis = available.pop(-1)
+                x_axis = dims_available.pop(-1)
                 x_axis.option = "x-axis"
 
-                for dim in available:
+                for dim in dims_available:
                     dim.option = "select_value"
                     dim.select_index = 0
 
@@ -167,10 +167,10 @@ class BaseRun(ABC):
                     'x-axis': [x_axis],
                     'y-axis': [y_axis],
                     "average": [],
-                    "select_value": available
+                    "select_value": dims_available
                 }
-            elif len(available) == 1:
-                x_axis = available.pop(-1)
+            elif len(dims_available) == 1:
+                x_axis = dims_available.pop(-1)
                 x_axis.option = "x-axis"
                 self.result_axes[var_name] = {
                     "x-axis": [x_axis],
@@ -179,28 +179,27 @@ class BaseRun(ABC):
                     "select_value": []
                 }
             else:
-                print("WHAAA????", available)
+                raise ValueError(
+                    "Dataset must at least have one dimension!", dims_available)
 
-
-
-    def select_results_by_keywords(self, keywords: str) -> list[str]:
+    def select_results_by_keywords(self, keywords_str: str) -> list[str]:
         """
         Select results by keywords in their name.
         Args:
-            keywords (list): List of keywords to search for
+            keywords (str): List of keywords to search for
         Returns:
             selected_results (list): List of selected result names
 
         TODO: simplify this! way too complicated
         """
-        print(f"using keywords: {keywords}")
+        print(f"using keywords: {keywords_str}")
         try:
-            if len(keywords) == 0:
+            if len(keywords_str) == 0:
                 keywords = []
             else:
-                keywords = ast.literal_eval(keywords)
+                keywords = ast.literal_eval(keywords_str)
         except (SyntaxError, ValueError):
-            print(f"Error parsing keywords: {keywords}")
+            print(f"Error parsing keywords: {keywords_str}")
             keywords = []
             ui.notify(
                 f"Error parsing result keywords: {keywords}. Please use a valid Python list.",
