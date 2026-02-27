@@ -1,14 +1,14 @@
 """Find peaks analysis using scipy.signal.find_peaks"""
+from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 import plotly.graph_objects as go
 from scipy.signal import find_peaks
 
-from arbok_inspector.analysis.AnalysisBase import AnalysisBase, AnalysisParameter
+from arbok_inspector.analysis.analysis_base import AnalysisBase, AnalysisParameter
 
 if TYPE_CHECKING:
     from xarray import Dataset
-
 
 class FindPeaksAnalysis(AnalysisBase):
     """Averages over all non-frequency dims and finds peaks with scipy."""

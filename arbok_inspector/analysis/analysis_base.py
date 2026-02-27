@@ -3,6 +3,7 @@ Base analysis class.
 
 Custom analysis classes should implement appropriate methods
 """
+from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import plotly.graph_objs as go

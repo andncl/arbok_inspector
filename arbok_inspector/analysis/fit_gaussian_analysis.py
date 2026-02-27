@@ -1,11 +1,12 @@
 """Gaussian fitting analysis using lmfit"""
+from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from lmfit.models import GaussianModel
+# from lmfit.models import GaussianModel
 
-from arbok_inspector.analysis.AnalysisBase import AnalysisBase, AnalysisParameter
+from arbok_inspector.analysis.analysis_base import AnalysisBase, AnalysisParameter
 
 if TYPE_CHECKING:
     from xarray import Dataset
