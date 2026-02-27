@@ -21,7 +21,8 @@ dependencies = [
     "SQLAlchemy ~= 2.0",
     "qcodes~=0.54.4",
     "xarray~=2026.1",
-    "zarr ~= 2.18"
+    "zarr ~= 2.18",
+    "scipy>=1.17.1",
 ]
 dynamic = ["version"]
 

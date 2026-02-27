@@ -2,19 +2,21 @@
 import xarray as xr
 from arbok_inspector.helpers.unit_formater import unit_formatter
 
-def title_formater(run):
+def title_formater(run, result_name: str | None):
     """
     Format title string for plots based on selected dimensions.
     
     Args:
         run: The Run object containing the data.
+        result_name: The name of the result dimension.
     Returns:
         A formatted title string.
     """
     title = ""
-    for dim in run.dim_axis_option["select_value"]:
-        title += f"{dim.name.replace('__', '.')} = "
-        title += f"{unit_formatter(run, dim, dim.select_index)}<br>"
+    if  result_name is not None:
+        for dim in run.result_axes[result_name]["select_value"]:
+            title += f"{dim.name.replace('__', '.')} = "
+            title += f"{unit_formatter(run, dim, dim.select_index)}<br>"
     return title
 
 def axis_label_formater(ds: xr.DataArray, dim_name: str) -> str:
