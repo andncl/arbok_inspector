@@ -12,14 +12,14 @@ DAY_GRID_COLUMN_DEFS = [
 
 AGGRID_STYLE = 'height: 95%; min-height: 0;'
 
-def trigger_update_run_selector(day):
+async def trigger_update_run_selector(day):
     print(f"day: {day}")
     if day is None:
         if 'last_selected_day' in app.storage.tab:
             day = app.storage.tab['last_selected_day']
         else:
             return
-    update_run_selector(day)
+    await update_run_selector(day)
     app.storage.tab['last_selected_day'] = day
 
 def build_day_selector() -> ui.aggrid:
@@ -48,7 +48,7 @@ def update_day_selector(day_grid: ui.aggrid | None = None) -> None:
         day_grid: ui.aggrid = app.storage.tab['day_grid']
     offset_hours = app.storage.general["timezone"]
     if inspector.database_type == 'qcodes':
-        rows = get_qcodes_days(inspector.cursor, offset_hours)
+        rows = get_qcodes_days(offset_hours)
     elif inspector.database_type == 'native_arbok':
         rows = get_native_arbok_days(inspector.database_engine,offset_hours)
     else:
@@ -72,22 +72,28 @@ def update_day_selector(day_grid: ui.aggrid | None = None) -> None:
         position = 'top-right'
     )
 
-def get_qcodes_days(cursor, offset_hours: float) -> list[tuple[str, datetime]]:
+def get_qcodes_days(offset_hours: float) -> list[tuple[str, datetime]]:
     """Retrieve available days from a QCoDeS database, adjusted for timezone offset."""
-    cursor.execute(f"""
-        SELECT 
-            day,
-            MIN(run_timestamp) AS earliest_ts
-        FROM (
+    import sqlite3
+    conn = sqlite3.connect(inspector.qcodes_database_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
             SELECT 
-                run_timestamp,
-                DATE(datetime(run_timestamp, 'unixepoch', '{offset_hours} hours')) AS day
-            FROM runs   
-        )
-        GROUP BY day
-        ORDER BY day;
-    """)
-    return cursor.fetchall()
+                day,
+                MIN(run_timestamp) AS earliest_ts
+            FROM (
+                SELECT 
+                    run_timestamp,
+                    DATE(datetime(run_timestamp, 'unixepoch', ? || ' hours')) AS day
+                FROM runs   
+            )
+            GROUP BY day
+            ORDER BY day;
+        """, (offset_hours,))
+        return cursor.fetchall()
+    finally:
+        conn.close()
 
 def get_native_arbok_days(engine, offset_hours: float) -> list[tuple[str, datetime]]:
     """Retrieve available days from a native Arbok database, adjusted for timezone offset."""

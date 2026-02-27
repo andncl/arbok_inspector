@@ -1,6 +1,11 @@
+"""Module containing greeter page for arbok-inspector"""
+from tkinter import Tk, filedialog
 
-from nicegui import ui
+from nicegui import ui, run
 from arbok_inspector.state import inspector
+
+ARBOK_GREEN = '#4BA701'
+ARBOK_PURPLE = 'purple'
 
 @ui.page('/')
 async def greeter_page() -> None:
@@ -31,18 +36,26 @@ def build_qcodes_connection_section() -> None:
             ).classes('text-body1 mb-4')
     ui.image('https://microsoft.github.io/Qcodes/_images/qcodes_logo.png')
     #ui.label('Database File Path').classes('text-subtitle2 mb-2')
-    path_input = ui.input(
-        label='Database file path',
-        placeholder='C:/path/to/your/database.db'
-    ).classes('w-full mb-2')
+    with ui.row().classes('w-full items-center gap-2'):
+        path_input = ui.input(
+            label='Database file path',
+            placeholder='C:/path/to/your/database.db'
+        ).classes('flex-grow').props('dense')
+        ui.button(
+            text = '',
+            icon = 'folder',
+            color = ARBOK_PURPLE,
+            on_click = lambda _: choose_file(path_input))
     ui.button(
         text = 'Load Database',
         on_click=lambda: inspector.connect_to_qcodes_database(path_input),
         icon='folder_open',
-        color='purple').classes('mb-4 w-full')
+        color=ARBOK_GREEN
+        ).classes('mb-4 w-full')
     ui.separator()
-    ui.label('Supported formats: .db, .sqlite, .sqlite3'
-            ).classes('text-caption text-grey')
+    ui.label(
+        text = 'Supported formats: .db, .sqlite, .sqlite3'
+        ).classes('text-caption text-grey')
 
 def build_native_arbok_connection_section() -> None:
     # ui.label('Enter credentials to your native postgresql database and minio server'
@@ -88,4 +101,17 @@ def build_native_arbok_connection_section() -> None:
             minio_bucket.value
             ),
         icon='folder_open',
-        color='#4BA701').classes('mb-4 w-full')
+        color=ARBOK_GREEN).classes('mb-4 w-full')
+    
+def open_file_dialog():
+    root = Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    path = filedialog.askopenfilename()
+    root.destroy()
+    return path
+
+async def choose_file(path_input: ui.input) -> None:
+    path = await run.io_bound(open_file_dialog)
+    if path:
+        path_input.value = path

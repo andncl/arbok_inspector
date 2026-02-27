@@ -6,22 +6,13 @@ from typing import TYPE_CHECKING
 
 from abc import ABC, abstractmethod
 import ast
-import re
-import io
-import json
-from qcodes.dataset import load_by_id
 from nicegui import ui, app
-from nicegui import run as nicegui_run
-import xarray as xr
-
-
 
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
 from arbok_inspector.state import ArbokInspector, inspector
 
 if TYPE_CHECKING:
-    from qcodes.dataset.data_set import DataSet
     from xarray import Dataset
 
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
@@ -30,6 +21,10 @@ class BaseRun(ABC):
     """
     Class representing a run with its data and methods
     """
+    full_data_set: Dataset
+    last_avg_subset: Dataset
+    name: str
+
     def __init__(self, run_id: int):
         """
         Constructor for Run class
@@ -42,7 +37,6 @@ class BaseRun(ABC):
         self.inspector: ArbokInspector =  inspector
         self.parallel_sweep_axes: dict = {}
         self.sweep_dict: dict[int, Dim] = {}
-        self.full_data_set: Dataset | None = None
         self._database_columns: dict[str, dict[str, str]] = {}
         self.dims: list[Dim] = []
         self.plot_selection: list[str] = []

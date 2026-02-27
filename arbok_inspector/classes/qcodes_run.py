@@ -54,6 +54,7 @@ class QcodesRun(BaseRun):
     def _load_dataset(self, conn) -> Dataset:
         """Load the xarray Dataset for the run from the QCoDeS database."""
         dataset = load_by_id(self.run_id, conn=conn)
+        self.name = dataset.name
         dataset = dataset.to_xarray_dataset(use_multi_index = 'never')
         return dataset
 
