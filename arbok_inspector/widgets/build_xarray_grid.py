@@ -74,6 +74,7 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
         return
 
     figures = []
+    results_same_trace = {}
     for result_name in run.plot_selection:
         if run.show_histogram:
             ds = run.generate_binned_subset(has_new_data=has_new_data)
@@ -85,12 +86,13 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
                 figure = create_1d_plot(run, {result_name: result})[0]
                 figures.append(figure)
             else:
-                figure = create_1d_plot(run, {result_name: result})[0]
-                figures.append(figure)
+                results_same_trace[result_name] = result
+                #figure = create_1d_plot(run, {result_name: result})[0]
+                #figures.append(figure)
         elif len(result.dims) == 2:
             figure = create_2d_figure(result_name, result, run)
             figures.append(figure)
-
+    figures += create_1d_plot(run, results_same_trace)
     create_figures_ui_grid(figures, container, run)
 
 def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:

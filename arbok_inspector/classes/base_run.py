@@ -317,7 +317,7 @@ class BaseRun(ABC):
         Returns:
             sub_set (xarray.Dataset): The subset of the full dataset
         """
-        last_non_avg_dims = list((self.last_avg_subset).dims)
+        last_non_avg_dims = list(list(self.last_avg_subset.values())[0].dims)
         avg_names = [d.name for d in self.dim_axis_option['average']]
         plot_names = [d.name for d in self.dim_axis_option['select_value']]
         if self.dim_axis_option['y-axis']:
