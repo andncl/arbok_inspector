@@ -80,7 +80,6 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
         else:
             ds = run.generate_subset_dict(has_new_data=has_new_data)
         result = ds[result_name]
-        print("RESULT DIMS:", result.dims)
         if len(result.dims) == 1:
             if run.show_histogram:
                 figure = create_1d_plot(run, {result_name: result})[0]

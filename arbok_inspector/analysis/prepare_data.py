@@ -150,8 +150,6 @@ def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.Da
     # and the rest be flattened
     data_np = data_np.reshape(-1, prod(data_np.shape[-len(axes_to_bin):]))
 
-    hist = np.apply_along_axis(lambda x: np.histogram(x, bins=bins)[0], -1, data_np)
-    hist = hist.reshape(shape[:-len(axes_to_bin)] + (hist.shape[-1],))
     print('data_np.min()', data_np.min()
           , 'data_np.max()', data_np.max())
     if isinstance(bins, int):
@@ -159,6 +157,8 @@ def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.Da
                                 data_np.max() + data_np.std(), bins + 1)
     else:
         bin_edges = bins
+    hist = np.apply_along_axis(lambda x: np.histogram(x, bins=bin_edges)[0], -1, data_np)
+    hist = hist.reshape(shape[:-len(axes_to_bin)] + (hist.shape[-1],))
     coords = {dim_i: data.coords[dim_i] for dim_i in data.dims if dim_i not in dim}
     coords['Current'] = bin_edges[:-1]
     return xr.DataArray(hist, dims=new_dims, coords=coords)
