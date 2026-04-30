@@ -17,6 +17,45 @@ if TYPE_CHECKING:
     from plotly.graph_objs import Figure
     from xarray import DataArray
 
+def build_xarray_grid_hide(has_new_data: bool = False) -> None:
+    """
+    Build a grid of xarray plots for the given run.
+
+    Args:
+        has_new_data (bool): Flag indicating if there is new data to plot.
+    """
+    print("\nBuilding xarray grid of plots")
+    run = app.storage.tab["run"]
+    container = app.storage.tab["placeholders"]['plots']
+    container.clear()
+    if run.dim_axis_option['x-axis'] is None:
+        ui.notify(
+            'Please select at least one dimension for the x-axis to display plots.<br>',
+            color = 'red')
+        return
+    if run.show_histogram:
+        ds = run.generate_binned_subset(has_new_data=has_new_data)
+    else:
+        ds = run.generate_subset(has_new_data=has_new_data)
+    results_1d = {}
+    results_2d = {}
+    results_unshowable = {}
+    for result_name in run.plot_selection:
+        result = ds[result_name]
+        if len(result.dims) == 1:
+            if run.show_histogram:
+                results_2d[result_name] = result
+            else:
+                results_1d[result_name] = result
+        elif len(result.dims) == 2:
+            results_2d[result_name] = result
+        else:
+            results_unshowable[result_name] = result
+
+    figures: list = create_1d_plot(run, results_1d)
+    figures += create_2d_plots(run, results_2d)
+    create_figures_ui_grid(figures, container, run)
+
 def build_xarray_grid(has_new_data: bool = False) -> None:
     """
     Build a grid of xarray plots for the given run.
@@ -33,27 +72,31 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
             'Please select at least one dimension for the x-axis to display plots.<br>',
             color = 'red')
         return
-    ds = run.generate_subset(has_new_data=has_new_data)
-    results_1d = {}
-    results_2d = {}
-    results_unshowable = {}
+
+    figures = []
     for result_name in run.plot_selection:
+        if run.show_histogram:
+            ds = run.generate_binned_subset(has_new_data=has_new_data)
+        else:
+            ds = run.generate_subset_dict(has_new_data=has_new_data)
         result = ds[result_name]
         if len(result.dims) == 1:
-            results_1d[result_name] = result
+            if run.show_histogram:
+                figure = create_2d_figure(result_name, result, run)
+                figures.append(figure)
+            else:
+                figure = create_1d_plot(run, {result_name: result})[0]
+                figures.append(figure)
         elif len(result.dims) == 2:
-            results_2d[result_name] = result
-        else:
-            results_unshowable[result_name] = result
+            figure = create_2d_figure(result_name, result, run)
+            figures.append(figure)
 
-    figures: list = create_1d_plot(run, results_1d)
-    figures += create_2d_plots(run, results_2d)
     create_figures_ui_grid(figures, container, run)
 
 def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
     """
     Creates plotly figure with all 1D traces in it.
-    
+
     Args:
         run (RunBase): Run that data is taken from
         results_dict (dict): Dict with result names as keys and xarray DataArrays
@@ -77,7 +120,7 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
             })
             plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(
                 result, x_dim)
- 
+
         else:
             ui.notify(
                 f"Result {result_name} does not have coordinates for {x_dim}",
@@ -94,7 +137,7 @@ def create_2d_plots(
         run: BaseRun, results_dict: dict[str, DataArray]) -> list[Figure]:
     """
     Creates a list with all plotly 2D plots from the given data dict
-    
+
     Args:
         run (BaseRun): Run object describing measurement
         results_dict (dict): Dict with result names as keys and xarray
@@ -117,8 +160,12 @@ def create_2d_figure(
         result (DataArray): xarray DataArray to display
         run (BaseRun): Run object of measurement
     """
+    print("Creating 2D plot for result:", result_name)
     x_dim = run.dim_axis_option['x-axis'].name
-    y_dim = run.dim_axis_option['y-axis'].name
+    try:
+        y_dim = run.dim_axis_option['y-axis'].name
+    except AttributeError:
+        y_dim = 'Current'
     plot_dict = copy.deepcopy(app.storage.tab["plot_dict_2D"])
     plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(
         result, x_dim)

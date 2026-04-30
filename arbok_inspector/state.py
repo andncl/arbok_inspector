@@ -33,11 +33,11 @@ class ArbokInspector:
         self.database_engine = None
         self.minio_filesystem = None
         self.minio_bucket = None
-        if path_input.value is None:
+        if path_input is None:
             ui.notify('Please enter a file path', type='warning')
             return
         try:
-            file_path = Path(path_input.value)
+            file_path = Path(path_input)
             if file_path.exists():
                 self.qcodes_database_path = file_path
                 ui.notify(f'Database path set: {file_path.name}', type='positive')

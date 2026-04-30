@@ -1,5 +1,5 @@
 """Module containing prepare_data function for analysis tools"""
-
+from math import prod
 from matplotlib.pylab import f
 from qcodes.dataset.data_set import load_by_id, DataSet
 import xarray as xr
@@ -116,3 +116,49 @@ def avg_dataarray(xdata_array: xr.DataArray, avg_axes: str | list = 'auto'):
             raise KeyError(
                 f"Avg. axis {axis} not found in xarray data-array")
     return xdata_array
+
+def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.DataArray:
+    """ Bin the data over the specified dimensions using the specified bins.
+    Parameters
+    ----------
+    data : xr.DataArray
+        The data to bin.
+    dim : list[str]
+        The dimensions to bin over.
+    bins : int | list
+        The number of bins or the bin edges to use for binning.
+    Returns
+    -------
+    xr.DataArray
+        The binned data.
+    """
+
+    # Get the axis to bin over
+    if isinstance(dim, str):
+        dim = [dim]
+    axes_to_bin = [data.get_axis_num(d) for d in dim]
+    new_dims = [d for d in data.dims if d not in dim] + ['Current']
+    data_np = data.values
+
+    # Move the axes to bin over to the end of the array
+    data_np = np.moveaxis(data_np, axes_to_bin, np.arange(len(axes_to_bin)) + data_np.ndim - len(axes_to_bin))
+
+    # Get the shape of the array after moving the axes
+    shape = data_np.shape
+
+    # Reshape the array to have the last dimensions be the ones to bin over,
+    # and the rest be flattened
+    data_np = data_np.reshape(-1, prod(data_np.shape[-len(axes_to_bin):]))
+
+    hist = np.apply_along_axis(lambda x: np.histogram(x, bins=bins)[0], -1, data_np)
+    hist = hist.reshape(shape[:-len(axes_to_bin)] + (hist.shape[-1],))
+    print('data_np.min()', data_np.min()
+          , 'data_np.max()', data_np.max())
+    if isinstance(bins, int):
+        bin_edges = np.linspace(data_np.min() - data_np.std(),
+                                data_np.max() + data_np.std(), bins + 1)
+    else:
+        bin_edges = bins
+    coords = {dim_i: data.coords[dim_i] for dim_i in data.dims if dim_i not in dim}
+    coords['Current'] = bin_edges[:-1]
+    return xr.DataArray(hist, dims=new_dims, coords=coords)

@@ -79,6 +79,11 @@ async def run_page(run_id: str):
                 ui.label(f'Run-ID: {run_id}').classes('text-2xl font-bold')
             with ui.card().classes('w-full gap-2'):
                 ui.label("Coordinates:").classes('text-lg font-semibold pl-2')
+                ui.toggle(
+                    options=['Average', 'histogram'],
+                    value='Average',
+                    on_change=lambda e: toggle_statistics(e.value,run)
+                ).classes('w-full').props('color=purple')
                 ui.separator().classes('w-full my-1')
                 for i, _ in run.parallel_sweep_axes.items():
                     add_dim_dropdown(sweep_idx = i)
@@ -142,6 +147,45 @@ async def run_page(run_id: str):
                     on_click = lambda: download_qua_code(run),
                 )
 
+def toggle_statistics(value: str, run: BaseRun):
+    """
+    Toggle the display of average and histogram statistics in the plots.
+
+    Args:
+        value (str): The selected statistics option
+        run (BaseRun): The run object containing the data and plot configuration
+    """
+    if value == 'Average':
+        if run.show_histogram is True:
+            dim_to_y = run.dim_axis_option['select_value'][0]
+            #update_sweep_dim_name(dim_to_y, dim_to_y.name)
+            update_dim_selection(dim_to_y, 'select_value', dim_to_y.slider)
+            #update_dim_selection(dim_to_y, 'y-axis', None)
+            #dim_to_y.ui_selector.update()
+           # run.update_subset_dims(dim_to_y, 'y-axis')
+        run.show_histogram = False
+    elif value == 'histogram':
+        if run.show_histogram is not True:
+            dim_to_bin = run.dim_axis_option['y-axis']
+            print("The dim that will be binned is:", dim_to_bin.name)
+            print("Which is currently of type:", dim_to_bin.option)
+
+            #update_dim_selection(dim_to_bin, 'select_value', None)
+            #run.update_subset_dims(dim_to_bin, 'select_value')
+
+            #dim_to_bin.ui_selector.update()
+            #build_dim_slider(run, dim_to_bin)
+            print("Built the slider")
+            #update_dim_selection(dim_to_bin, 'average', dim_to_bin.slider)
+            print("Current dims to average: ",[d.name for d in run.dim_axis_option['average']])
+            run.update_subset_dims(dim_to_bin, 'average')
+            print("Dims to average: ",[d.name for d in run.dim_axis_option['average']])
+            print("Updated the dim selection")
+        run.show_histogram = True
+    else:
+        run.show_histogram = False
+    build_xarray_grid(has_new_data=True)
+
 def add_dim_dropdown(sweep_idx: int):
     """
     Add a dropdown to select the dimension option for a given sweep index.
@@ -187,7 +231,6 @@ def update_dim_selection(dim: Dim, value: str, slider_placeholder):
         dim.slider = None
         dim.select_label.delete()
         dim.select_label = None
-    print(value)
     if value == 'select_value':
         with slider_placeholder:
             build_dim_slider(run, dim)
@@ -223,7 +266,7 @@ def build_dim_slider(run: BaseRun, dim: Dim):
 def update_value_from_dim_slider(label, slider, dim: Dim, plot = True):
     """
     Update the label next to the slider with the current value and unit.
-    
+
     Args:
         label: The UI label to update
         slider: The UI slider to get the value from
@@ -238,7 +281,7 @@ def update_value_from_dim_slider(label, slider, dim: Dim, plot = True):
 def update_sweep_dim_name(dim: Dim, new_name: str):
     """
     Update the name of the dimension in the sweep dict and the dim object.
-    
+
     Args:
         dim (Dim): The dimension object to update
         new_name (str): The new name for the dimension

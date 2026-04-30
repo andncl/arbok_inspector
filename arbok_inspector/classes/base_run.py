@@ -11,9 +11,9 @@ from nicegui import ui, app
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
 from arbok_inspector.state import ArbokInspector, inspector
+from arbok_inspector.analysis.prepare_data import bin_over_axis
 
-if TYPE_CHECKING:
-    from xarray import Dataset
+from xarray import Dataset, DataArray
 
 AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
 
@@ -23,12 +23,13 @@ class BaseRun(ABC):
     """
     full_data_set: Dataset
     last_avg_subset: Dataset
+    last_avg_dict: dict[str, DataArray]
     name: str
 
     def __init__(self, run_id: int):
         """
         Constructor for Run class
-        
+
         Args:
             run_id (int): ID of the run
         """
@@ -40,6 +41,7 @@ class BaseRun(ABC):
         self._database_columns: dict[str, dict[str, str]] = {}
         self.dims: list[Dim] = []
         self.plot_selection: list[str] = []
+        self.show_histogram: bool = False
 
     @property
     def database_columns(self) -> dict[str, dict[str, str]]:
@@ -54,7 +56,7 @@ class BaseRun(ABC):
     def _load_dataset(self) -> Dataset:
         """
         Load the dataset for the given run ID from the appropriate database type.
-        
+
         Args:
             run_id (int): ID of the run
             database_type (str): Type of the database ('qcodes' or 'arbok')
@@ -84,6 +86,7 @@ class BaseRun(ABC):
         Prepare the run by loading dataset and initializing attributes
         """
         self.last_avg_subset: Dataset = self.full_data_set
+        self.last_avg_dict: dict[str, DataArray] = {var_name: var for var_name, var in self.full_data_set.data_vars.items()}
         self.load_sweep_dict()
         self.dims: list[Dim] = list(self.sweep_dict.values())
         self.dim_axis_option: dict[str, str|list[Dim]] = self.set_dim_axis_option()
@@ -211,23 +214,29 @@ class BaseRun(ABC):
         ui.notify(text, position='top-right')
 
         ### First, remove old option this dim was on
-        for option in ['average', 'select_value']:
-            if dim in self.dim_axis_option[option]:
-                print(f"Removing {dim.name} from {option}")
-                self.dim_axis_option[option].remove(dim)
-                dim.option = None
-                if option == 'select_value':
-                    dim.select_index = 0
+        current_averages = self.dim_axis_option['average']
+        if dim in current_averages:
+            print(f"Removing {dim.name} from average")
+            current_averages.remove(dim)
+            dim.option = None
+        current_selected_values = self.dim_axis_option['select_value']
+        if dim in current_selected_values:
+            print(f"Removing {dim.name} from select_value")
+            current_selected_values.remove(dim)
+            dim.option = None
+            dim.select_index = 0
         if dim.option in ['x-axis', 'y-axis']:
             print(f"Removing {dim.name} from {dim.option}")
             self.dim_axis_option[dim.option] = None
 
-        ### Now, set new option
+        # Then, set new option
         if selection in ['average', 'select_value']:
-            # dim.ui_selector.value = selection
             dim.select_index = index
             self.dim_axis_option[selection].append(dim)
+            dim.ui_selector.value = selection
             return
+        # for option in ['average', 'select_value']:
+        #     self.dim_axis_option[option] = list(set(self.dim_axis_option[option]))
         if selection in ['x-axis', 'y-axis']:
             old_dim = self.dim_axis_option[selection]
             self.dim_axis_option[selection] = dim
@@ -243,13 +252,71 @@ class BaseRun(ABC):
                     self.update_subset_dims(old_dim, 'select_value', old_dim.select_index)
         dim.ui_selector.update()
 
-    def generate_subset(self, has_new_data: bool = False) -> Dataset:
+    def generate_binned_subset(self, has_new_data: bool = False) -> dict[str, DataArray]:
+        """
+        Generate the subset of the full dataset based on the current dimension options
+        without averaging over any dimensions, and instead binning the data along the histogram_axis
+        dimension if it is set.
+
+        Returns:
+            sub_set (xarray.Dataset): The subset of the full dataset
+        """
+        last_non_avg_dims = list(list(self.last_avg_dict.values())[0].dims)
+        avg_names = [d.name for d in self.dim_axis_option['average']]
+        plot_names = [d.name for d in self.dim_axis_option['select_value']]
+        plot_names += [self.dim_axis_option['x-axis'].name] + ['Current']
+        if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
+            binned_set = self.last_avg_dict
+            print(f"Re-using last averaged subset: {list(list(binned_set.values())[0].dims)}")
+        else:
+            print(f"Binning over {avg_names}")
+            print("dims",self.full_data_set.dims)
+            binned_set = {}
+            for var_name, var in self.full_data_set.data_vars.items():
+                dataarray = bin_over_axis(var, dim=avg_names, bins=51)
+                binned_set[var_name] = dataarray
+            self.update_select_sliders()
+        self.last_avg_dict = binned_set
+        sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
+        print(f"Selecting subset with: {sel_dict}")
+        sub_set = {}
+        for var_name, var in binned_set.items():
+            sub_set[var_name] = var.isel(**sel_dict).squeeze()
+        return sub_set
+
+    def generate_subset_dict(self, has_new_data: bool = False) -> dict[str, DataArray]:
         """
         Generate the subset of the full dataset based on the current dimension options.
         Returns:
             sub_set (xarray.Dataset): The subset of the full dataset
         """
-        last_non_avg_dims = list(self.last_avg_subset.dims)
+        last_non_avg_dims = list(list(self.last_avg_dict.values())[0].dims)
+        avg_names = [d.name for d in self.dim_axis_option['average']]
+        plot_names = [d.name for d in self.dim_axis_option['select_value']]
+        if self.dim_axis_option['y-axis']:
+            plot_names.append(self.dim_axis_option['y-axis'].name)
+        plot_names.append(self.dim_axis_option['x-axis'].name)
+        if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
+            sub_set = self.last_avg_dict
+            print(f"Re-using last averaged subset: {list(sub_set.dims)}")
+        else:
+            print(f"Averiging over {avg_names}")
+            sub_set = self.full_data_set.mean(dim=avg_names)
+            self.update_select_sliders()
+        self.last_avg_dict = sub_set
+        sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
+        print(f"Selecting subset with: {sel_dict}")
+        sub_set = sub_set.isel(**sel_dict).squeeze()
+        print("subset dimensions", list(sub_set.dims))
+        return {var_name: var for var_name, var in sub_set.data_vars.items()}
+
+    def generate_subset(self, has_new_data: bool = False) -> dict[str, DataArray]:
+        """
+        Generate the subset of the full dataset based on the current dimension options.
+        Returns:
+            sub_set (xarray.Dataset): The subset of the full dataset
+        """
+        last_non_avg_dims = list((self.last_avg_subset).dims)
         avg_names = [d.name for d in self.dim_axis_option['average']]
         plot_names = [d.name for d in self.dim_axis_option['select_value']]
         if self.dim_axis_option['y-axis']:
