@@ -264,7 +264,8 @@ class BaseRun(ABC):
         last_non_avg_dims = list(list(self.last_avg_dict.values())[0].dims)
         avg_names = [d.name for d in self.dim_axis_option['average']]
         plot_names = [d.name for d in self.dim_axis_option['select_value']]
-        plot_names += [self.dim_axis_option['x-axis'].name] + ['Current']
+        if self.dim_axis_option['x-axis']:
+            plot_names += [self.dim_axis_option['x-axis'].name] + ['Current']
         if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
             binned_set = self.last_avg_dict
             print(f"Re-using last averaged subset: {list(list(binned_set.values())[0].dims)}")
@@ -344,6 +345,7 @@ class BaseRun(ABC):
             value (bool): True if the result is selected, False otherwise
             readout_name (str): Name of the result to update
         """
+        print("----------------Updating plot selection")
         print(f"{readout_name= } {value= }")
         pretty_readout_name = readout_name.replace("__", ".")
         if readout_name not in self.plot_selection:

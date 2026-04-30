@@ -157,30 +157,26 @@ def toggle_statistics(value: str, run: BaseRun):
     """
     if value == 'Average':
         if run.show_histogram is True:
-            dim_to_y = run.dim_axis_option['select_value'][0]
-            #update_sweep_dim_name(dim_to_y, dim_to_y.name)
-            update_dim_selection(dim_to_y, 'select_value', dim_to_y.slider)
-            #update_dim_selection(dim_to_y, 'y-axis', None)
-            #dim_to_y.ui_selector.update()
-           # run.update_subset_dims(dim_to_y, 'y-axis')
+            avg_keyword = app.storage.general["avg_axis"]
+            dim_to_y = None
+            for avg_dim in run.dim_axis_option['average']:
+                if avg_keyword not in avg_dim.name:
+                    dim_to_y = avg_dim
+                    run.update_subset_dims(dim_to_y, 'y-axis')
+                    break
+            if dim_to_y is None:
+                if run.dim_axis_option['select_value']:
+                    dim_to_y = run.dim_axis_option['select_value'][0]
+                    #update_dim_selection(dim_to_y, 'y-axis', None)
+                    run.update_subset_dims(dim_to_y, 'y-axis')
+                    dim_to_y.ui_selector.value = 'y-axis'
         run.show_histogram = False
     elif value == 'histogram':
         if run.show_histogram is not True:
             dim_to_bin = run.dim_axis_option['y-axis']
-            print("The dim that will be binned is:", dim_to_bin.name)
-            print("Which is currently of type:", dim_to_bin.option)
-
-            #update_dim_selection(dim_to_bin, 'select_value', None)
-            #run.update_subset_dims(dim_to_bin, 'select_value')
-
-            #dim_to_bin.ui_selector.update()
-            #build_dim_slider(run, dim_to_bin)
-            print("Built the slider")
-            #update_dim_selection(dim_to_bin, 'average', dim_to_bin.slider)
-            print("Current dims to average: ",[d.name for d in run.dim_axis_option['average']])
-            run.update_subset_dims(dim_to_bin, 'average')
-            print("Dims to average: ",[d.name for d in run.dim_axis_option['average']])
-            print("Updated the dim selection")
+            print("DIM TO BIN:", dim_to_bin)
+            if dim_to_bin != []:
+                run.update_subset_dims(dim_to_bin, 'average')
         run.show_histogram = True
     else:
         run.show_histogram = False

@@ -67,7 +67,7 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
     run = app.storage.tab["run"]
     container = app.storage.tab["placeholders"]['plots']
     container.clear()
-    if run.dim_axis_option['x-axis'] is None:
+    if run.dim_axis_option['x-axis'] is None and run.show_histogram is False:
         ui.notify(
             'Please select at least one dimension for the x-axis to display plots.<br>',
             color = 'red')
@@ -80,9 +80,10 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
         else:
             ds = run.generate_subset_dict(has_new_data=has_new_data)
         result = ds[result_name]
+        print("RESULT DIMS:", result.dims)
         if len(result.dims) == 1:
             if run.show_histogram:
-                figure = create_2d_figure(result_name, result, run)
+                figure = create_1d_plot(run, {result_name: result})[0]
                 figures.append(figure)
             else:
                 figure = create_1d_plot(run, {result_name: result})[0]
@@ -106,7 +107,10 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
         plotly figure
     """
     print("Creating 1D plot")
-    x_dim = run.dim_axis_option['x-axis'].name
+    if run.dim_axis_option['x-axis']:
+        x_dim = run.dim_axis_option['x-axis'].name
+    else:
+        x_dim = 'Current'
     traces = []
     plot_dict = copy.deepcopy(app.storage.tab["plot_dict_1D"])
     for result_name, result in results_dict.items():
@@ -192,6 +196,8 @@ def create_figures_ui_grid(figures: list[Figure], container, run: BaseRun) -> No
         run (BaseRun): Run object for measurement
     """
     num_plots = len(figures)
+    print(num_plots, "plots to display")
+    print(run.plots_per_column, "plots per column")
     num_columns = int(min([run.plots_per_column, len(figures)]))
     num_rows = math.ceil(num_plots / num_columns)
     plot_idx = 0
