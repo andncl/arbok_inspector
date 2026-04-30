@@ -299,7 +299,7 @@ class BaseRun(ABC):
         plot_names.append(self.dim_axis_option['x-axis'].name)
         if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
             sub_set = self.last_avg_dict
-            print(f"Re-using last averaged subset: {list(sub_set.dims)}")
+            print(f"Re-using last averaged subset: {list(list(sub_set.values())[0].dims)}")
         else:
             print(f"Averiging over {avg_names}")
             sub_set = self.full_data_set.mean(dim=avg_names)

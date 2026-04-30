@@ -83,12 +83,14 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
         result = ds[result_name]
         if len(result.dims) == 1:
             if run.show_histogram:
-                figure = create_1d_plot(run, {result_name: result})[0]
-                figures.append(figure)
+                name_short = result_name.split('__')[0]
+                if name_short.endswith('diff') or name_short.endswith('state'):
+                    figure = create_1d_plot(run, {result_name: result})[0]
+                    figures.append(figure)
+                else:
+                    results_same_trace[result_name] = result
             else:
                 results_same_trace[result_name] = result
-                #figure = create_1d_plot(run, {result_name: result})[0]
-                #figures.append(figure)
         elif len(result.dims) == 2:
             figure = create_2d_figure(result_name, result, run)
             figures.append(figure)
