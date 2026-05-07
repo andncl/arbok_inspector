@@ -17,7 +17,7 @@ def prepare_and_avg_data(
     data-array and the numpy data-array.
     This is done to allow different input types for the data while keeping the
     same output format.
-    
+
     Args:
         run (int | DataSet | xr.Dataset | xr.DataArray): Run id, qcodes dataset'
             xarray dataset or xarray data-array
@@ -60,7 +60,7 @@ def find_data_variable_from_keyword(
         xdata_array: xr.DataArray, keyword: str | tuple) -> str:
     """
     Find the data variable corresponding to a keyword in the data-array.
-    
+
     Args:
         xdata_array (xr.DataArray): xarray data-array to search in
         keyword (str): Keyword to search for
@@ -92,7 +92,7 @@ def avg_dataarray(xdata_array: xr.DataArray, avg_axes: str | list = 'auto'):
     """
     Averages the data-array over the specified axes. If no axes are specified
     the data-array is averaged over all axes.
-    
+
     Args:
         xdata_array (xr.DataArray): xarray data-array to be averaged
         avg_axes (str | list): Axes to average over
@@ -143,7 +143,6 @@ def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.Da
     if arbok_axis is not []:
         data_np = data_np[(slice(None),) * arbok_axis[0] + (slice(None, -1),)]
 
-
     # Move the axes to bin over to the end of the array
     data_np = np.moveaxis(data_np, axes_to_bin, np.arange(len(axes_to_bin)) + data_np.ndim - len(axes_to_bin))
 
@@ -157,8 +156,8 @@ def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.Da
     print('data_np.min()', data_np.min()
           , 'data_np.max()', data_np.max())
     if isinstance(bins, int):
-        bin_edges = np.linspace(data_np.min() - data_np.std(),
-                                data_np.max() + data_np.std(), bins + 1)
+        bin_edges = np.linspace(data_np.min() - 1.5*(data_np - data_np.mean()).std(),
+                                data_np.max() + 1.5*(data_np - data_np.mean()).std(), bins + 1)
     else:
         bin_edges = bins
     hist = np.apply_along_axis(lambda x: np.histogram(x, bins=bin_edges)[0], -1, data_np)
