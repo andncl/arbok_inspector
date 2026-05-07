@@ -137,11 +137,15 @@ def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.Da
     if isinstance(dim, str):
         dim = [dim]
     axes_to_bin = [data.get_axis_num(d) for d in dim]
+    arbok_axis = [data.get_axis_num(d) for d in dim if 'arbok' in d]
     new_dims = [d for d in data.dims if d not in dim] + ['Current']
     data_np = data.values
+    if arbok_axis is not []:
+        data_np = data_np[(slice(None),) * arbok_axis[0] + (slice(None, -1),)]
+
 
     # Move the axes to bin over to the end of the array
-    data_np = np.moveaxis(data_np, axes_to_bin, np.arange(len(axes_to_bin)) + data_np.ndim - len(axes_to_bin))[...,:-1]
+    data_np = np.moveaxis(data_np, axes_to_bin, np.arange(len(axes_to_bin)) + data_np.ndim - len(axes_to_bin))
 
     # Get the shape of the array after moving the axes
     shape = data_np.shape

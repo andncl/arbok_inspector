@@ -263,6 +263,8 @@ class BaseRun(ABC):
         """
         last_non_avg_dims = list(list(self.last_avg_dict.values())[0].dims)
         avg_names = [d.name for d in self.dim_axis_option['average']]
+        print(app.storage.general['avg_axis'])
+        print(avg_names)
         plot_names = [d.name for d in self.dim_axis_option['select_value']]
         if self.dim_axis_option['x-axis']:
             plot_names += [self.dim_axis_option['x-axis'].name] + ['Current']
