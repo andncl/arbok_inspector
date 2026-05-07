@@ -141,7 +141,7 @@ def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.Da
     data_np = data.values
 
     # Move the axes to bin over to the end of the array
-    data_np = np.moveaxis(data_np, axes_to_bin, np.arange(len(axes_to_bin)) + data_np.ndim - len(axes_to_bin))
+    data_np = np.moveaxis(data_np, axes_to_bin, np.arange(len(axes_to_bin)) + data_np.ndim - len(axes_to_bin))[...,:-1]
 
     # Get the shape of the array after moving the axes
     shape = data_np.shape

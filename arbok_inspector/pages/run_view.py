@@ -167,7 +167,6 @@ def toggle_statistics(value: str, run: BaseRun):
             if dim_to_y is None:
                 if run.dim_axis_option['select_value']:
                     dim_to_y = run.dim_axis_option['select_value'][0]
-                    #update_dim_selection(dim_to_y, 'y-axis', None)
                     run.update_subset_dims(dim_to_y, 'y-axis')
                     dim_to_y.ui_selector.value = 'y-axis'
         run.show_histogram = False
@@ -175,7 +174,7 @@ def toggle_statistics(value: str, run: BaseRun):
         if run.show_histogram is not True:
             dim_to_bin = run.dim_axis_option['y-axis']
             print("DIM TO BIN:", dim_to_bin)
-            if dim_to_bin != []:
+            if dim_to_bin != []: # if binning 1d sweep
                 run.update_subset_dims(dim_to_bin, 'average')
         run.show_histogram = True
     else:
