@@ -144,7 +144,8 @@ def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.Da
         data_np = data_np[(slice(None),) * arbok_axis[0] + (slice(None, -1),)]
 
     # Move the axes to bin over to the end of the array
-    data_np = np.moveaxis(data_np, axes_to_bin, np.arange(len(axes_to_bin)) + data_np.ndim - len(axes_to_bin))
+    end_axes = np.arange(len(axes_to_bin)) + data_np.ndim - len(axes_to_bin)
+    data_np = np.moveaxis(data_np, axes_to_bin, end_axes)
 
     # Get the shape of the array after moving the axes
     shape = data_np.shape
@@ -153,11 +154,9 @@ def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.Da
     # and the rest be flattened
     data_np = data_np.reshape(-1, prod(data_np.shape[-len(axes_to_bin):]))
 
-    print('data_np.min()', data_np.min()
-          , 'data_np.max()', data_np.max())
     if isinstance(bins, int):
-        bin_edges = np.linspace(data_np.min() - 1.5*(data_np - data_np.mean()).std(),
-                                data_np.max() + 1.5*(data_np - data_np.mean()).std(), bins + 1)
+        bin_edges = np.linspace(data_np.mean() - 3*data_np.std(),
+                                data_np.mean() + 3*data_np.std(), bins + 1)
     else:
         bin_edges = bins
     hist = np.apply_along_axis(lambda x: np.histogram(x, bins=bin_edges)[0], -1, data_np)

@@ -252,7 +252,7 @@ class BaseRun(ABC):
                     self.update_subset_dims(old_dim, 'select_value', old_dim.select_index)
         dim.ui_selector.update()
 
-    def generate_binned_subset(self, has_new_data: bool = False) -> dict[str, DataArray]:
+    def generate_binned_subset(self, has_new_data: bool = False, bins: int | list = 51) -> dict[str, DataArray]:
         """
         Generate the subset of the full dataset based on the current dimension options
         without averaging over any dimensions, and instead binning the data along the histogram_axis
@@ -276,7 +276,7 @@ class BaseRun(ABC):
             print("dims",self.full_data_set.dims)
             binned_set = {}
             for var_name, var in self.full_data_set.data_vars.items():
-                dataarray = bin_over_axis(var, dim=avg_names, bins=51)
+                dataarray = bin_over_axis(var, dim=avg_names, bins=bins)
                 binned_set[var_name] = dataarray
             self.update_select_sliders()
         self.last_avg_dict = binned_set
