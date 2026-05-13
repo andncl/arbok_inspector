@@ -10,6 +10,14 @@ def unit_formatter(run, dim, index: int) -> str:
         1200000   -> "1.2 M"
         0.00042   -> "420 µ"
         0.0000008 -> "800 n"
+
+    Args:
+        run (Run): Run object containing the data
+        dim (Dim): Dimension object
+        index (int): Index of the value to format
+    
+    Returns:
+        str: formatted html string
     """
     unit_tuples = [
         ('G', 1e9), ('M', 1e6), ('k', 1e3), ('m', 1e-3), ('µ', 1e-6), ('n', 1e-9)]
