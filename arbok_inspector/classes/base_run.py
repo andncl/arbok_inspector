@@ -22,7 +22,7 @@ class BaseRun(ABC):
     Class representing a run with its data and methods
     """
     full_data_set: Dataset
-    last_avg_subset: Dataset
+    last_avg_subset: Dataset | None
     name: str
 
     def __init__(self, run_id: int):
@@ -40,6 +40,8 @@ class BaseRun(ABC):
         self._database_columns: dict[str, dict[str, str]] = {}
         self.dims: list[Dim] = []
         self.plot_selection: list[str] = []
+        self.last_avg_subset = None
+        self.result_axes: dict[str, dict[str, list[Dim]]] = {}
 
     @property
     def database_columns(self) -> dict[str, dict[str, str]]:
@@ -86,8 +88,11 @@ class BaseRun(ABC):
         self.last_avg_subset: Dataset = self.full_data_set
         self.load_sweep_dict()
         self.dims: list[Dim] = list(self.sweep_dict.values())
-        self.dim_axis_option: dict[str, str|list[Dim]] = self.set_dim_axis_option()
-        print(self.dims)
+        # self.dim_axis_option: dict[str, Dim|list[Dim]] = self.set_dim_axis_option()
+        # self.result_axes = self.set_dim_axis_option()
+        self.set_dim_axis_option()
+        print("result_axis", self.result_axes)
+        print("self.dims", self.dims)
 
         self.plot_selection: list[str] = self.select_results_by_keywords(
             app.storage.general["result_keywords"]
@@ -125,54 +130,76 @@ class BaseRun(ABC):
         4. Set all remaining dims to 'select_value'
 
         Returns:
-            options (dict): Dictionary with keys 'average', 'select_value', 'y-axis',
+            options (dict): Dictionary with keys 'average', 'select_value', 'x-axis' and 'y-axis'
         """
-        options = {x: [] for x in AXIS_OPTIONS}
-        print(f"Setting average to {app.storage.general['avg_axis']}")
-        for dim in self.dims:
-            if app.storage.general["avg_axis"] is None:
-                break
-            if app.storage.general["avg_axis"] in dim.name:
-                dim.option = 'average'
-                options['average'].append(dim)
-        for dim in reversed(self.dims):
-            if dim not in options['average'] and dim != options['x-axis']:
-                dim.option = "x-axis"
-                options['x-axis'] = dim
-                print(f"Setting x-axis to {dim.name}")
-                break
-        for dim in reversed(self.dims):
-            if dim not in options['average'] and dim != options['x-axis']:
-                dim.option = 'y-axis'
-                options['y-axis'] = dim
-                print(f"Setting y-axis to {dim.name}")
-                break
-        for dim in self.dims:
-            if dim not in options['average'] and dim != options['x-axis'] and dim != options['y-axis']:
-                dim.option = 'select_value'
-                options['select_value'].append(dim)
-                dim.select_index = 0
-                print(f"Setting select_value to {dim.name}")
-        return options
 
-    def select_results_by_keywords(self, keywords: str) -> list[str]:
+        print(f"Setting average to {app.storage.general['avg_axis']}")
+        print("total_optiosn", self.full_data_set.data_vars.keys())
+        print("app store", app.storage.general["avg_axis"])
+
+        # Populate per-result axis assignments.
+        # Each result gets its own x/y from its own dims, ignoring averaged ones.
+        # avg_names = {d.name for d in options['average']}
+        for var_name in self.full_data_set.data_vars.keys():
+            var_name = str(var_name)  # for type stability
+            print(var_name)
+            self.result_axes[var_name] = {}
+            var_dims = list(self.full_data_set[var_name].dims)
+            print("--> ", var_dims)
+
+            # Remove any dims that should be averaged
+            # if app.storage.general["avg_axis"]:
+            #     for dim in var_dims:
+
+            dims_available = [d for d in self.dims if d.name in var_dims]
+            if len(dims_available) >= 2:
+                y_axis = dims_available.pop(-2)
+                y_axis.option = "y-axis"
+
+                x_axis = dims_available.pop(-1)
+                x_axis.option = "x-axis"
+
+                for dim in dims_available:
+                    dim.option = "select_value"
+                    dim.select_index = 0
+
+                self.result_axes[var_name] =  {
+                    'x-axis': [x_axis],
+                    'y-axis': [y_axis],
+                    "average": [],
+                    "select_value": dims_available
+                }
+            elif len(dims_available) == 1:
+                x_axis = dims_available.pop(-1)
+                x_axis.option = "x-axis"
+                self.result_axes[var_name] = {
+                    "x-axis": [x_axis],
+                    "y-axis": [],
+                    "average": [],
+                    "select_value": []
+                }
+            else:
+                raise ValueError(
+                    "Dataset must at least have one dimension!", dims_available)
+
+    def select_results_by_keywords(self, keywords_str: str) -> list[str]:
         """
         Select results by keywords in their name.
         Args:
-            keywords (list): List of keywords to search for
+            keywords (str): List of keywords to search for
         Returns:
             selected_results (list): List of selected result names
 
         TODO: simplify this! way too complicated
         """
-        print(f"using keywords: {keywords}")
+        print(f"using keywords: {keywords_str}")
         try:
-            if len(keywords) == 0:
+            if len(keywords_str) == 0:
                 keywords = []
             else:
-                keywords = ast.literal_eval(keywords)
+                keywords = ast.literal_eval(keywords_str)
         except (SyntaxError, ValueError):
-            print(f"Error parsing keywords: {keywords}")
+            print(f"Error parsing keywords: {keywords_str}")
             keywords = []
             ui.notify(
                 f"Error parsing result keywords: {keywords}. Please use a valid Python list.",
@@ -211,63 +238,146 @@ class BaseRun(ABC):
         ui.notify(text, position='top-right')
 
         ### First, remove old option this dim was on
-        for option in ['average', 'select_value']:
-            if dim in self.dim_axis_option[option]:
-                print(f"Removing {dim.name} from {option}")
-                self.dim_axis_option[option].remove(dim)
-                dim.option = None
-                if option == 'select_value':
-                    dim.select_index = 0
-        if dim.option in ['x-axis', 'y-axis']:
-            print(f"Removing {dim.name} from {dim.option}")
-            self.dim_axis_option[dim.option] = None
+        print("All dims: ", self.result_axes)
+        for result, axes in self.result_axes.items():
+            for option in AXIS_OPTIONS:
+                if axes[option] is not None and dim in axes[option]:
+                    print(f"Removing {result}/{dim.name} from {option}")
+                    self.result_axes[result][option].remove(dim)
+                    # if len(self.result_axes[result][option]) == 0:
+                    #     self.result_axes[result][option] = None
+                    dim.option = None
+                    if option == 'select_value':
+                        dim.select_index = 0  # reset
 
-        ### Now, set new option
-        if selection in ['average', 'select_value']:
-            # dim.ui_selector.value = selection
-            dim.select_index = index
-            self.dim_axis_option[selection].append(dim)
+        # Find ALL results that contain this dim
+        matching_results = [
+            str(result_name)
+            for result_name, da in self.full_data_set.items()
+            if dim.name in da.dims
+        ]
+        print("--> found in", matching_results)
+        if not matching_results:
+            print("Couldn't find dimension in any result")
             return
+
+        ### Now, set new option for every result containing this dim
+        if selection in ['average', 'select_value']:
+            dim.select_index = index
+            for result_dim in matching_results:
+                self.result_axes[result_dim][selection].append(dim)
         if selection in ['x-axis', 'y-axis']:
-            old_dim = self.dim_axis_option[selection]
-            self.dim_axis_option[selection] = dim
-            if old_dim:
-                # Set previous dim (having this option) to 'select_value'
-                # Required since x and y axis have to be unique
-                print(old_dim)
-                print(f"Updating {old_dim.name} to {dim.name} on {selection}")
-                if old_dim.option in ['x-axis', 'y-axis']:
-                    self.dim_axis_option['select_value'].append(old_dim)
-                    old_dim.option = 'select_value'
+            displaced_dims = set()
+            for result_dim in matching_results:
+                if self.result_axes[result_dim][selection]:
+                    old_dim = self.result_axes[result_dim][selection][0]
+                else:
+                    old_dim = None
+                self.result_axes[result_dim][selection] = [dim]
+                if old_dim and old_dim is not dim and old_dim not in displaced_dims:
+                    displaced_dims.add(old_dim)
+                    old_dim.option = "select_value"
                     old_dim.ui_selector.value = 'select_value'
+                    print(f"Updating clash of {result_dim}/{old_dim.name} to {result_dim}/{dim.name} on {selection}")
                     self.update_subset_dims(old_dim, 'select_value', old_dim.select_index)
         dim.ui_selector.update()
 
-    def generate_subset(self, has_new_data: bool = False) -> Dataset:
+    def update_result_axis(self, result_name: str, axis: str, dim_name: str | None) -> None:
         """
-        Generate the subset of the full dataset based on the current dimension options.
+        Set the x-axis or y-axis for a specific result variable and rebuild plots.
+
+        Args:
+            result_name: Name of the result variable.
+            axis: Either 'x-axis' or 'y-axis'.
+            dim_name: Dimension name to assign, or None to clear.
+        """
+        if result_name not in self.result_axes:
+            self.result_axes[result_name] = {x: [] for x in AXIS_OPTIONS}
+        dim = next((d for d in self.dims if d.name == dim_name), [])
+        self.result_axes[result_name][axis] = [dim] if dim is not None else []
+        print("reaching through update_result_axis")
+        build_xarray_grid()
+
+    def _get_averaged_subset(self, has_new_data: bool = False) -> Dataset:
+        """
+        Return the dataset averaged over all 'average'-role dimensions.
+
+        Re-uses the cached ``last_avg_subset`` when the set of non-averaged
+        dimensions has not changed and no new data was signalled.
+
+        Args:
+            has_new_data: Force re-computation even if the dim config is unchanged.
         Returns:
-            sub_set (xarray.Dataset): The subset of the full dataset
+            xr.Dataset with 'average' dimensions collapsed.
         """
         last_non_avg_dims = list(self.last_avg_subset.dims)
-        avg_names = [d.name for d in self.dim_axis_option['average']]
-        plot_names = [d.name for d in self.dim_axis_option['select_value']]
-        if self.dim_axis_option['y-axis']:
-            plot_names.append(self.dim_axis_option['y-axis'].name)
-        plot_names.append(self.dim_axis_option['x-axis'].name)
-        if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
-            sub_set = self.last_avg_subset
-            print(f"Re-using last averaged subset: {list(sub_set.dims)}")
-        else:
-            print(f"Averiging over {avg_names}")
-            sub_set = self.full_data_set.mean(dim=avg_names)
-            self.update_select_sliders()
+        avg_names = []
+        expected_remaining = []
+        for dims in self.result_axes.values():
+            if dims is not None:
+                avg_names.extend([d.name for d in dims['average']])
+                expected_remaining.extend([d.name for d in dims['select_value']])
+            for ax in (dims['x-axis'] + dims['y-axis']):
+                if ax is not None:
+                    expected_remaining.append(ax.name)
+        print("avg_names:", avg_names)
+        print("expected_remaining:", expected_remaining)
+        if set(expected_remaining) == set(last_non_avg_dims) and not has_new_data:
+            print(f"Re-using cached averaged subset: {last_non_avg_dims}")
+            return self.last_avg_subset
+        print(f"Averaging over {avg_names}")
+        sub_set = self.full_data_set.mean(dim=avg_names)
+        self.update_select_sliders()
         self.last_avg_subset = sub_set
-        sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
-        print(f"Selecting subset with: {sel_dict}")
-        sub_set = sub_set.isel(**sel_dict).squeeze()
-        print("subset dimensions", list(sub_set.dims))
         return sub_set
+
+    # def generate_subset(self, has_new_data: bool = False) -> Dataset:
+    #     """
+    #     Generate the subset of the full dataset based on the current dimension options.
+    #     Returns:
+    #         sub_set (xarray.Dataset): The subset of the full dataset
+    #     """
+    #     avg_sub = self._get_averaged_subset(has_new_data=has_new_data)
+    #     sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
+    #     print(f"Selecting subset with: {sel_dict}")
+    #     sub_set = avg_sub.isel(**sel_dict).squeeze()
+    #     print("subset dimensions", list(sub_set.dims))
+    #     return sub_set
+
+    def generate_subset_for_result(
+            self, result_name: str, has_new_data: bool = False) -> xr.DataArray:
+        """
+        Generate a subset DataArray for a single result variable.
+
+        Applies only the averaging and index-selection steps that are relevant
+        to this result's own dimensions.  Dimensions assigned the x-axis or
+        y-axis role are left intact so the caller can plot them.
+
+        The averaged base dataset is cached via ``_get_averaged_subset``, so
+        calling this method for multiple results within a single render cycle
+        only triggers re-averaging once (on the first call with has_new_data=True).
+
+        Args:
+            result_name: Name of the result variable in full_data_set.
+            has_new_data: Forwarded to _get_averaged_subset; set True only on
+                the first result in a render cycle to avoid redundant work.
+        Returns:
+            xr.DataArray for the result, with select_value dims collapsed.
+        """
+        avg_sub = self._get_averaged_subset(has_new_data=has_new_data)
+        da = avg_sub[result_name]
+        result_dims = set(da.dims)
+        # Never isel a dim that is assigned as this result's x or y axis.
+        axes = self.result_axes[result_name]
+        protected = {ax.name for ax in (axes['x-axis'] + axes['y-axis']) if ax is not None}
+        sel_dict = {
+            d.name: d.select_index
+            for d in axes['select_value']
+            if d.name in result_dims and d.name not in protected
+        }
+        if sel_dict:
+            da = da.isel(**sel_dict)
+        return da.squeeze()
 
     def update_plot_selection(self, value: bool, readout_name: str):
         """
@@ -298,7 +408,8 @@ class BaseRun(ABC):
         """
         Update the select sliders based on the current dimension options.
         """
-        for dim in self.dim_axis_option['select_value']:
-            print(f"Updating slider for {dim.name}")
-            dim.slider._props["max"] = len(self.full_data_set[dim.name]) - 1
-            dim.slider.update()
+        for result, axes in self.result_axes.items():
+            for dim in axes['select_value']:
+                print(f"Updating slider for {result}/{dim.name}")
+                dim.slider._props["max"] = len(self.full_data_set[dim.name]) - 1
+                dim.slider.update()

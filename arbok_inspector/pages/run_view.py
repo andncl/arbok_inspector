@@ -11,6 +11,7 @@ from arbok_inspector.state import inspector
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
 from arbok_inspector.widgets.build_xarray_html import build_xarray_html
 from arbok_inspector.widgets.build_run_view_actions import build_run_view_actions
+from arbok_inspector.widgets.build_analysis_selector import build_analysis_selector
 from arbok_inspector.helpers.unit_formater import unit_formatter
 from arbok_inspector.classes.qcodes_run import QcodesRun
 from arbok_inspector.classes.native_run import NativeRun
@@ -80,10 +81,11 @@ async def run_page(run_id: str):
             with ui.card().classes('w-full gap-2'):
                 ui.label("Coordinates:").classes('text-lg font-semibold pl-2')
                 ui.separator().classes('w-full my-1')
-                for i, _ in run.parallel_sweep_axes.items():
-                    add_dim_dropdown(sweep_idx = i)
-            with ui.card().classes('w-full gap-2'):
-                ui.label("Results:").classes(TITLE_CLASSES)
+
+                # Always reset so stale sections from a previous run don't linger
+                # app.storage.tab["coord_sections"] = []
+
+                # For each result, show the appropriate coordinates
                 for i, result in enumerate(run.full_data_set):
                     value = False
                     if result in run.plot_selection:
@@ -93,6 +95,8 @@ async def run_page(run_id: str):
                         value = value,
                         on_change = lambda e, r=result: run.update_plot_selection(e.value, r),
                     ).classes('text-sm h-4').props('color=purple')
+                    build_coordinate_sections(run, result)
+
             with ui.card().classes('w-full gap-2'):
                 ui.label("Actions:").classes(TITLE_CLASSES)
                 build_run_view_actions()
@@ -122,8 +126,7 @@ async def run_page(run_id: str):
                 build_xarray_html()
             with ui.expansion('analysis', icon='science', value=False)\
                 .classes(EXPANSION_CLASSES):
-                with ui.row():
-                    ui.label("Working on it!  -Andi").classes(TITLE_CLASSES)
+                build_analysis_selector()
             with ui.expansion('metadata', icon='numbers', value=False)\
                 .classes(f"{EXPANSION_CLASSES}  overflow-x-auto"):
                 placeholder_metadata = {}
@@ -141,6 +144,21 @@ async def run_page(run_id: str):
                     text="download serialized qua program",
                     on_click = lambda: download_qua_code(run),
                 )
+
+def build_coordinate_sections(run, result):
+    """
+    Build coordinate dim dropdowns for a single result variable, followed by
+    per-result X / Y axis selectors.
+    """
+    all_dims = list(run.full_data_set.dims)
+    sig = tuple(run.full_data_set[result].dims)
+
+    for dim_name in sig:
+        if dim_name in all_dims:
+            sweep_idx = all_dims.index(dim_name)
+            add_dim_dropdown(sweep_idx=sweep_idx)
+
+    ui.separator().classes('w-full my-0')
 
 def add_dim_dropdown(sweep_idx: int):
     """

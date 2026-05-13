@@ -28,21 +28,32 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
     run = app.storage.tab["run"]
     container = app.storage.tab["placeholders"]['plots']
     container.clear()
-    if run.dim_axis_option['x-axis'] is None:
-        ui.notify(
-            'Please select at least one dimension for the x-axis to display plots.<br>',
-            color = 'red')
-        return
-    ds = run.generate_subset(has_new_data=has_new_data)
+    for result, axes in run.result_axes.items():
+        if len(axes['x-axis']) == 0:
+            ui.notify(
+                'Please select at least one dimension for the x-axis of "' + str(result) + '" to display plots.<br>',
+                color = 'red')
+            return
     results_1d = {}
     results_2d = {}
     results_unshowable = {}
-    for result_name in run.plot_selection:
-        result = ds[result_name]
-        if len(result.dims) == 1:
-            results_1d[result_name] = result
-        elif len(result.dims) == 2:
+    for i, result_name in enumerate(run.plot_selection):
+        # has_new_data only needs to prime the averaged-subset cache once;
+        # subsequent calls reuse the cache automatically.
+        result = run.generate_subset_for_result(
+            result_name, has_new_data=(has_new_data and i == 0)
+        )
+        axes = run.result_axes.get(result_name, {})
+        assert len(axes['x-axis']) == 1
+        x_dim = axes['x-axis'][0]  # only ever one entry!
+        y_dim = axes['y-axis'][0] if axes['y-axis'] else None
+        result_dims = set(result.dims)
+        has_x = x_dim is not None and x_dim.name in result_dims
+        has_y = y_dim is not None and y_dim.name in result_dims
+        if has_x and has_y and len(result.dims) == 2:
             results_2d[result_name] = result
+        elif has_x and len(result.dims) == 1:
+            results_1d[result_name] = result
         else:
             results_unshowable[result_name] = result
 
@@ -50,7 +61,7 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
     figures += create_2d_plots(run, results_2d)
     create_figures_ui_grid(figures, container, run)
 
-def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
+def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> list[Figure]:
     """
     Creates plotly figure with all 1D traces in it.
     
@@ -63,10 +74,11 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
         plotly figure
     """
     print("Creating 1D plot")
-    x_dim = run.dim_axis_option['x-axis'].name
     traces = []
     plot_dict = copy.deepcopy(app.storage.tab["plot_dict_1D"])
     for result_name, result in results_dict.items():
+        x_dim_obj = run.result_axes[result_name]['x-axis'][0]
+        x_dim = x_dim_obj.name if x_dim_obj is not None else None
         if x_dim in result.coords:
             traces.append({
                 "type": "scatter",
@@ -77,7 +89,6 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
             })
             plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(
                 result, x_dim)
- 
         else:
             ui.notify(
                 f"Result {result_name} does not have coordinates for {x_dim}",
@@ -117,8 +128,9 @@ def create_2d_figure(
         result (DataArray): xarray DataArray to display
         run (BaseRun): Run object of measurement
     """
-    x_dim = run.dim_axis_option['x-axis'].name
-    y_dim = run.dim_axis_option['y-axis'].name
+    axes = run.result_axes.get(result_name, {})
+    x_dim = axes['x-axis'][0].name
+    y_dim = axes['y-axis'][0].name
     plot_dict = copy.deepcopy(app.storage.tab["plot_dict_2D"])
     plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(
         result, x_dim)
@@ -131,8 +143,7 @@ def create_2d_figure(
     plot_dict["data"][0]["z"] = result.values.tolist()
     plot_dict["data"][0]["x"] = result.coords[x_dim].values.tolist()
     plot_dict["data"][0]["y"] = result.coords[y_dim].values.tolist()
-    title = result_name.replace("__", ".")
-    plot_dict = add_title_to_plot_dict(run, plot_dict, title)
+    plot_dict = add_title_to_plot_dict(run, plot_dict, result_name)
     return go.Figure(plot_dict)
 
 def create_figures_ui_grid(figures: list[Figure], container, run: BaseRun) -> None:
@@ -166,7 +177,7 @@ def create_figures_ui_grid(figures: list[Figure], container, run: BaseRun) -> No
                                 .style(f'min-height: {int(800/num_rows)}px;')
                         plot_idx += 1
 
-def add_title_to_plot_dict(run: BaseRun, plot_dict: dict, result_name: str) -> dict:
+def add_title_to_plot_dict(run: BaseRun, plot_dict: dict, result_name: str | None) -> dict:
     """
     Generate a title string for the plots based on selected dimensions.
 
@@ -184,9 +195,8 @@ def add_title_to_plot_dict(run: BaseRun, plot_dict: dict, result_name: str) -> d
         title_string = f"Run ID: {run.run_id} -- <i>{db_path}</i><br>"
     else:
         title_string = ""
-    if result_name is not None:
-        title_string += f"<b>{result_name}</b><br>"
-    title_string += f"{title_formater(run)}"
+    title_string += f"<b>{result_name}</b><br>"
+    title_string += f"{title_formater(run, result_name)}"
     num_lines = title_string.count("<br>") + 1
     plot_dict["layout"].setdefault("margin", {})
     plot_dict["layout"]["title"]["y"] = 0.97
