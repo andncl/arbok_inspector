@@ -229,6 +229,11 @@ def update_dim_selection(dim: Dim, value: str, slider_placeholder):
     if value == 'select_value':
         with slider_placeholder:
             build_dim_slider(run, dim)
+    if value == 'y-axis' and run.show_histogram:
+        ui.notify('Cannot set dimension as y-axis while histogram is enabled. ' \
+                'Please disable histogram first.', type='warning')
+        ui.update()
+        return
     run.update_subset_dims(dim, value)
     dim.option = value
     build_xarray_grid()

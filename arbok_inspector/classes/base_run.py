@@ -231,6 +231,7 @@ class BaseRun(ABC):
 
         # Then, set new option
         if selection in ['average', 'select_value']:
+            dim.option = selection
             dim.select_index = index
             self.dim_axis_option[selection].append(dim)
             dim.ui_selector.value = selection
@@ -240,6 +241,7 @@ class BaseRun(ABC):
         if selection in ['x-axis', 'y-axis']:
             old_dim = self.dim_axis_option[selection]
             self.dim_axis_option[selection] = dim
+            dim.option = selection
             if old_dim:
                 # Set previous dim (having this option) to 'select_value'
                 # Required since x and y axis have to be unique
@@ -273,7 +275,6 @@ class BaseRun(ABC):
             print(f"Re-using last averaged subset: {list(list(binned_set.values())[0].dims)}")
         else:
             print(f"Binning over {avg_names}")
-            print("dims",self.full_data_set.dims)
             binned_set = {}
             for var_name, var in self.full_data_set.data_vars.items():
                 dataarray = bin_over_axis(var, dim=avg_names, bins=bins)
