@@ -29,6 +29,7 @@ async def greeter_page() -> None:
                 with ui.card().classes('flex-1 gap-4'):
                     build_native_arbok_connection_section()
     dialog.open()
+    #inspector.connect_to_qcodes_database('/home/alensenanian/testing_22042026.db')
 
 def build_qcodes_connection_section() -> None:
     """Build the QCoDeS database connection section."""
@@ -48,7 +49,7 @@ def build_qcodes_connection_section() -> None:
             on_click = lambda _: choose_file(path_input))
     ui.button(
         text = 'Load Database',
-        on_click=lambda: inspector.connect_to_qcodes_database(path_input),
+        on_click=lambda: inspector.connect_to_qcodes_database(path_input.value),
         icon='folder_open',
         color=ARBOK_GREEN
         ).classes('mb-4 w-full')

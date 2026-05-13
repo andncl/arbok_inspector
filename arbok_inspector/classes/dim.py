@@ -24,7 +24,7 @@ class Dim:
             select_index (int): Index of the selected value for select_value option
             ui_selector: Reference to the UI element for the dimension
         """
-        self.name = name
+        self.name: str = name
         self.option: str | None = None
         self.select_index: int = 0
         self.ui_selector: Select | None = None

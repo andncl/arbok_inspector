@@ -1,5 +1,5 @@
 """Module containing prepare_data function for analysis tools"""
-
+from math import prod
 from matplotlib.pylab import f
 from qcodes.dataset.data_set import load_by_id, DataSet
 import xarray as xr
@@ -17,7 +17,7 @@ def prepare_and_avg_data(
     data-array and the numpy data-array.
     This is done to allow different input types for the data while keeping the
     same output format.
-    
+
     Args:
         run (int | DataSet | xr.Dataset | xr.DataArray): Run id, qcodes dataset'
             xarray dataset or xarray data-array
@@ -60,7 +60,7 @@ def find_data_variable_from_keyword(
         xdata_array: xr.DataArray, keyword: str | tuple) -> str:
     """
     Find the data variable corresponding to a keyword in the data-array.
-    
+
     Args:
         xdata_array (xr.DataArray): xarray data-array to search in
         keyword (str): Keyword to search for
@@ -92,7 +92,7 @@ def avg_dataarray(xdata_array: xr.DataArray, avg_axes: str | list = 'auto'):
     """
     Averages the data-array over the specified axes. If no axes are specified
     the data-array is averaged over all axes.
-    
+
     Args:
         xdata_array (xr.DataArray): xarray data-array to be averaged
         avg_axes (str | list): Axes to average over
@@ -116,3 +116,51 @@ def avg_dataarray(xdata_array: xr.DataArray, avg_axes: str | list = 'auto'):
             raise KeyError(
                 f"Avg. axis {axis} not found in xarray data-array")
     return xdata_array
+
+def bin_over_axis(data: xr.DataArray, dim: list[str], bins: int | list) -> xr.DataArray:
+    """ Bin the data over the specified dimensions using the specified bins.
+    Parameters
+    ----------
+    data : xr.DataArray
+        The data to bin.
+    dim : list[str]
+        The dimensions to bin over.
+    bins : int | list
+        The number of bins or the bin edges to use for binning.
+    Returns
+    -------
+    xr.DataArray
+        The binned data.
+    """
+
+    # Get the axis to bin over
+    if isinstance(dim, str):
+        dim = [dim]
+    axes_to_bin = [data.get_axis_num(d) for d in dim]
+    arbok_axis = [data.get_axis_num(d) for d in dim if 'arbok' in d]
+    new_dims = [d for d in data.dims if d not in dim] + ['Current']
+    data_np = data.values
+    if arbok_axis is not []:
+        data_np = data_np[(slice(None),) * arbok_axis[0] + (slice(None, -1),)]
+
+    # Move the axes to bin over to the end of the array
+    end_axes = np.arange(len(axes_to_bin)) + data_np.ndim - len(axes_to_bin)
+    data_np = np.moveaxis(data_np, axes_to_bin, end_axes)
+
+    # Get the shape of the array after moving the axes
+    shape = data_np.shape
+
+    # Reshape the array to have the last dimensions be the ones to bin over,
+    # and the rest be flattened
+    data_np = data_np.reshape(-1, prod(data_np.shape[-len(axes_to_bin):]))
+
+    if isinstance(bins, int):
+        bin_edges = np.linspace(data_np.mean() - 3*data_np.std(),
+                                data_np.mean() + 3*data_np.std(), bins + 1)
+    else:
+        bin_edges = bins
+    hist = np.apply_along_axis(lambda x: np.histogram(x, bins=bin_edges)[0], -1, data_np)
+    hist = hist.reshape(shape[:-len(axes_to_bin)] + (hist.shape[-1],))
+    coords = {dim_i: data.coords[dim_i] for dim_i in data.dims if dim_i not in dim}
+    coords['Current'] = bin_edges[:-1]
+    return xr.DataArray(hist, dims=new_dims, coords=coords)
