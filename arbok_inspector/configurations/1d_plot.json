@@ -1,8 +1,17 @@
 {
-  "data": [],
+  "data": [
+    {
+      "type": "scatter",
+      "mode": "lines+markers",
+      "marker": {
+        "size": 6
+      }
+    }
+  ],
   "layout": {
     "template": "plotly_dark",
     "autosize": true,
+    "hovermode": "closest",
     "margin": {
       "l": 40,
       "r": 40,

@@ -6,17 +6,24 @@
       "x": null,
       "y": null,
       "colorscale": "magma",
+      "reversescale": false,
       "colorbar": {
         "thickness": 10,
         "xanchor": "left",
-        "x": 1.0
+        "x": 1.0,
+        "title": {
+          "text": ""
+        }
       },
-      "showscale": true
+      "showscale": true,
+      "zmin": null,
+      "zmax": null
     }
   ],
   "layout": {
     "template": "plotly_dark",
     "autosize": true,
+    "hovermode": "closest",
     "margin": {
       "l": 40,
       "r": 40,
@@ -55,6 +62,15 @@
       "font": {
         "size": 12
       }
+    },
+    "legend": {
+      "x": 1,
+      "y": 1,
+      "xanchor": "right",
+      "yanchor": "top",
+      "bgcolor": "rgba(0,0,0,0.5)",
+      "bordercolor": "white",
+      "borderwidth": 1
     }
   }
 }
