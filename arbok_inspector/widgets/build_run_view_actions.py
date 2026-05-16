@@ -20,71 +20,96 @@ DEFAULT_REFRESH_INTERVAL_S = 2
 
 def build_run_view_actions() -> None:
     """Build the run view action buttons and controls."""
-    with ui.column().classes('items-start'):  # compact vertical layout
+    with ui.column().classes('w-full items-stretch gap-2'):
         # Row 1: Update + Debug
-        with ui.row().classes('gap-2'):
+        with ui.row().classes('w-full gap-1 flex-nowrap'):
             ui.button(
                 'Update',
                 icon='refresh',
                 color='green',
                 on_click=reload_dataset_and_refresh_plots
-                ).props('dense')
+                ).props('dense size=sm').classes('flex-1 min-w-0')
             ui.button(
                 'Debug', icon='info', color='red', on_click=print_debug
-                ).props('dense')
+                ).props('dense size=sm').classes('flex-1 min-w-0')
 
         # Row 2: Settings buttons
-        with ui.row().classes('gap-2'):
+        with ui.row().classes('w-full gap-1 flex-nowrap'):
             dialog_1d = JsonPlotSettingsDialog('plot_dict_1D')
             dialog_2d = JsonPlotSettingsDialog('plot_dict_2D')
 
-            ui.button('1D settings', color='pink',
-                    on_click=dialog_1d.open).props('dense')
-            ui.button('2D settings', color='orange',
-                    on_click=dialog_2d.open).props('dense')
+            ui.button('1D JSON', color='pink',
+                    on_click=dialog_1d.open).props('dense size=sm')\
+                    .classes('flex-1 min-w-0')
+            ui.button('2D JSON', color='orange',
+                    on_click=dialog_2d.open).props('dense size=sm')\
+                    .classes('flex-1 min-w-0')
 
         # Row 3: Timer controls
-        with ui.row().classes('items-center gap-2'):
+        with ui.row().classes('w-full items-center gap-1 flex-nowrap'):
             timer = ui.timer(
                 interval=DEFAULT_REFRESH_INTERVAL_S,
                 callback=reload_dataset_and_refresh_plots,
                 active=False
                 )
-            ui.label('Auto-plot')
+            ui.label('Reload').classes('text-xs')
             ui.switch(
                 on_change=lambda e: setattr(timer, 'active', e.value)
-            )
+            ).props('dense')
             ui.number(
-                # label='(s)',
                 value=DEFAULT_REFRESH_INTERVAL_S,
                 min=0.1,
                 step=0.1,
                 format='%.1f',
                 on_change=lambda e: on_interval_change(e, timer),
-            ).props('dense suffix="s"').classes('w-12')
+            ).props('dense suffix="s"').classes('flex-1 min-w-0')
         # --- Row 4: Plot layout control ---
-        with ui.row().classes('gap-2'):
+        with ui.row().classes('w-full gap-1 flex-nowrap'):
             ui.number(
-                label='# per col',
+                label='# col',
                 value=2,
                 format='%.0f',
                 on_change=lambda e: set_plots_per_column(e.value),
-            ).props('dense outlined').classes('w-24 h-8 text-xs')
+            ).props('dense outlined').classes('flex-1 min-w-0 text-xs')
 
-        # --- Row 5: Download buttons ---
-        with ui.row().classes('gap-2'):
+            ui.number(
+                label='Font',
+                value=app.storage.tab.get("plot_font_size", 12),
+                min=4,
+                max=40,
+                step=1,
+                format='%.0f',
+                on_change=lambda e: set_plot_font_size(e.value),
+            ).props('dense outlined').classes('flex-1 min-w-0 text-xs')
+
+        # --- Row 5: Log scale toggles ---
+        with ui.row().classes('w-full gap-1 items-center flex-nowrap'):
+            ui.label('Log:').classes('text-xs')
+            ui.switch(
+                'X',
+                value=app.storage.tab.get("log_scale_x", False),
+                on_change=lambda e: set_log_scale('x', e.value),
+            ).props('dense')
+            ui.switch(
+                'Y',
+                value=app.storage.tab.get("log_scale_y", False),
+                on_change=lambda e: set_log_scale('y', e.value),
+            ).props('dense')
+
+        # --- Row 6: Download buttons ---
+        with ui.row().classes('w-full gap-1 flex-nowrap'):
             ui.button(
                 'Full',
                 icon='file_download',
                 color='blue',
                 on_click=download_full_dataset
-                ).props('dense')
+                ).props('dense size=sm').classes('flex-1 min-w-0')
             ui.button(
-                'Selection',
+                'Selec.',
                 icon='file_download',
                 color='darkblue',
                 on_click=download_data_selection
-                ).props('dense')
+                ).props('dense size=sm').classes('flex-1 min-w-0')
 
 def on_interval_change(e, timer):
     try:
@@ -98,6 +123,20 @@ def on_interval_change(e, timer):
     except ValueError:
         ui.notify('Please enter a valid number', color='red')
         e.sender.value = timer.interval  # revert
+
+def set_plot_font_size(value: float):
+    """Set the font size for plot axes and ticks, then rebuild plots."""
+    size = int(value)
+    app.storage.tab["plot_font_size"] = size
+    ui.notify(f'Font size set to {size}', position='top-right')
+    build_xarray_grid()
+
+def set_log_scale(axis: str, value: bool):
+    """Toggle log/linear scale for the given axis, then rebuild plots."""
+    app.storage.tab[f"log_scale_{axis}"] = value
+    scale = "log" if value else "linear"
+    ui.notify(f'{axis.upper()}-axis scale set to {scale}', position='top-right')
+    build_xarray_grid()
 
 def set_plots_per_column(value: int):
     """
