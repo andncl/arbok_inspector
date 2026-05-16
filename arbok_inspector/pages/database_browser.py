@@ -1,4 +1,7 @@
 """Database browser page showing the selected database information and run/day selectors."""
+import json
+import importlib.resources as resources
+
 from nicegui import ui, app
 
 from arbok_inspector.state import inspector
@@ -8,6 +11,7 @@ from arbok_inspector.widgets.day_selector import (
     trigger_update_run_selector
 )
 from arbok_inspector.widgets.run_selector import build_run_selector
+from arbok_inspector.widgets.json_plot_settings_dialog import JsonPlotSettingsDialog
 
 
 
@@ -41,6 +45,13 @@ async def database_browser_page():
 
     app.storage.tab['day_grid'] = None
     app.storage.tab['run_grid'] = None
+
+    if "plot_dict_1D" not in app.storage.general:
+        with resources.files("arbok_inspector.configurations").joinpath("1d_plot.json").open("r") as f:
+            app.storage.general["plot_dict_1D"] = json.load(f)
+    if "plot_dict_2D" not in app.storage.general:
+        with resources.files("arbok_inspector.configurations").joinpath("2d_plot.json").open("r") as f:
+            app.storage.general["plot_dict_2D"] = json.load(f)
 
     offset_minutes = await ui.run_javascript('new Date().getTimezoneOffset()')
     offset_hours = -float(offset_minutes) / 60
@@ -78,7 +89,6 @@ def build_database_info_section():
 def build_info_section():
     """Build the database information section."""
     with ui.card().classes('w-1/3 flex-col'):
-        ui.label('Database Information').classes('text-xl font-semibold mb-4')
         if inspector.database_type == 'qcodes':
             _build_qcodes_db_info_section()
         elif inspector.database_type == 'native':
@@ -95,21 +105,33 @@ def _build_native_db_info_section():
 def build_actions_section():
     """Build the database action buttons section."""
     with ui.card().classes('w-1/4 flex-col'):
-        with ui.column().classes('w-full justify-start'):
+        with ui.column().classes('w-full justify-start items-stretch gap-1'):
             ui.button(
-                text = 'Other Database',
+                text = 'Open other Database',
                 on_click=lambda: ui.navigate.to('/'),
-                color='purple').props('dense').classes('w-full')
-            ui.button(
-                text = 'Reload Days',
-                on_click=lambda: update_day_selector(),
-                color = '#4BA701'
-                ).props('dense').classes('w-full')
-            ui.button(
-                text = 'Reload Runs',
-                on_click= lambda: trigger_update_run_selector(None),
-                color = '#4BA701'
-                ).props('dense').classes('w-full')
+                color='purple').props('dense size=sm').classes('w-full')
+            with ui.row().classes('items-center gap-2 flex-nowrap'):
+                ui.button(
+                    text = 'Days',
+                    icon = 'loop',
+                    on_click=lambda: update_day_selector(),
+                    color = '#4BA701'
+                    ).props('dense size=sm').classes('flex-1 min-w-0')
+                ui.button(
+                    text = 'Runs',
+                    icon = 'loop',
+                    on_click= lambda: trigger_update_run_selector(None),
+                    color = '#4BA701'
+                    ).props('dense size=sm').classes('flex-1 min-w-0')
+            with ui.row().classes('items-center gap-2 flex-nowrap'):
+                dialog_1d = JsonPlotSettingsDialog('plot_dict_1D', storage='general')
+                dialog_2d = JsonPlotSettingsDialog('plot_dict_2D', storage='general')
+                ui.button('1D JSON', color='pink',
+                          on_click=dialog_1d.open)\
+                            .classes('flex-1 min-w-0').props('dense size=sm')
+                ui.button('2D JSON', color='orange',
+                          on_click=dialog_2d.open)\
+                            .classes('flex-1 min-w-0').props('dense size=sm')
 
 def on_interval_change(e, timer) -> None:
     """
@@ -134,11 +156,11 @@ def on_interval_change(e, timer) -> None:
 def build_settings_section():
     """Build the database settings section."""
     with ui.card().classes('w-1/3 flex-col'):
-        with ui.row().classes('w-full'):
+        with ui.row().classes('w-full gap-1'):
             app.storage.tab["result_keyword_input"] = ui.input(
                 label = 'auto-plot keywords',
                 placeholder="e.g:\t\t[ ( 'Q1' , 'state' ), 'feedback' ]"
-                ).props('outlined dense')\
+                ).props('outlined dense size=sm')\
                 .classes('w-full')\
                 .style('border-radius: 4px;')\
                 .tooltip("""
@@ -152,26 +174,26 @@ def build_settings_section():
             app.storage.tab["avg_axis_input"] = ui.input(
                 label = 'average-axis keyword',
                 value = "iteration"
-                ).props('outlined dense')\
+                ).props('outlined dense size=sm')\
                 .classes('w-full')\
                 .style('border-radius: 4px;')
 
-            with ui.row().classes('items-center gap-2'):
-                ui.label("Auto-refresh")
-                timer = ui.timer(
-                    interval=DEFAULT_REFRESH_INTERVAL_S,
-                    callback=  lambda: trigger_update_run_selector(None),
-                    active=False
-                    )
-                # ui.label('Auto-plot')
-                ui.switch(
-                    on_change=lambda e: setattr(timer, 'active', e.value)
-                )
-                ui.number(
-                    # label='(s)',
-                    value=DEFAULT_REFRESH_INTERVAL_S,
-                    min=0.1,
-                    step=0.1,
-                    format='%.1f',
-                    on_change=lambda e: on_interval_change(e, timer),
-                ).props('dense suffix="s"').classes('w-12')
+            # with ui.row().classes('items-center gap-2'):
+            #     ui.label("Auto-refresh")
+            #     timer = ui.timer(
+            #         interval=DEFAULT_REFRESH_INTERVAL_S,
+            #         callback=  lambda: trigger_update_run_selector(None),
+            #         active=False
+            #         )
+            #     # ui.label('Auto-plot')
+            #     ui.switch(
+            #         on_change=lambda e: setattr(timer, 'active', e.value)
+            #     )
+            #     ui.number(
+            #         # label='(s)',
+            #         value=DEFAULT_REFRESH_INTERVAL_S,
+            #         min=0.1,
+            #         step=0.1,
+            #         format='%.1f',
+            #         on_change=lambda e: on_interval_change(e, timer),
+            #     ).props('dense suffix="s"').classes('w-12')
