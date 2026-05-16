@@ -260,12 +260,27 @@ def apply_axis_scale(plot_dict: dict) -> None:
             layout[axis_key]["type"] = "log" if log_on else "linear"
 
 def apply_gridlines(plot_dict: dict) -> None:
-    """Toggle gridlines on axes for non-heatmap plots."""
+    """Toggle gridlines on axes and clamp log range when data contains 0."""
     show = app.storage.tab.get("show_gridlines", False)
     layout = plot_dict["layout"]
+    data_key = {"xaxis": "x", "yaxis": "y"}
     for axis_key in ("xaxis", "yaxis"):
-        if axis_key in layout:
-            layout[axis_key]["showgrid"] = show
+        if axis_key not in layout:
+            continue
+        layout[axis_key]["showgrid"] = show
+        if layout[axis_key].get("type") != "log":
+            continue
+        all_vals = []
+        for trace in plot_dict.get("data", []):
+            vals = trace.get(data_key[axis_key])
+            if vals:
+                all_vals.extend(vals)
+        if 0 not in all_vals:
+            continue
+        positives = [v for v in all_vals if v > 0]
+        if positives:
+            layout[axis_key]["range"] = [
+                math.log10(min(positives)), math.log10(max(positives))]
 
 
 def _pixel_half_width(data: list) -> float:
