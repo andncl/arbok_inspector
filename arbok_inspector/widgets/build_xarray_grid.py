@@ -117,15 +117,19 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
         x_dim = 'Current'
     traces = []
     plot_dict = copy.deepcopy(app.storage.tab["plot_dict_1D"])
+    trace_template = plot_dict.get("data", [{}])[0] if plot_dict.get("data") else {}
     for result_name, result in results_dict.items():
         if x_dim in result.coords:
-            traces.append({
+            trace = {
                 "type": "scatter",
-                "mode": "lines+markers",
+                "mode": trace_template.get("mode", "lines+markers"),
                 "name": result_name.replace("__", "."),
                 "x": result.coords[x_dim].values.tolist(),
                 "y": result.values.tolist(),
-            })
+            }
+            if "marker" in trace_template:
+                trace["marker"] = copy.deepcopy(trace_template["marker"])
+            traces.append(trace)
             plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(
                 result, x_dim)
 

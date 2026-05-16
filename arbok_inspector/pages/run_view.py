@@ -1,9 +1,6 @@
 """Run view page showing the data and plots for a specific run"""
 from __future__ import annotations
 from typing import TYPE_CHECKING
-import json
-import importlib.resources as resources
-
 from nicegui import ui, app
 from nicegui import run as nicegui_run
 
@@ -72,10 +69,9 @@ async def run_page(run_id: str):
     app.storage.tab["log_scale_x"] = False
     app.storage.tab["log_scale_y"] = False
     app.storage.tab["show_gridlines"] = True
-    with resources.files("arbok_inspector.configurations").joinpath("1d_plot.json").open("r") as f:
-        app.storage.tab["plot_dict_1D"] = json.load(f)
-    with resources.files("arbok_inspector.configurations").joinpath("2d_plot.json").open("r") as f:
-        app.storage.tab["plot_dict_2D"] = json.load(f)
+    import copy
+    app.storage.tab["plot_dict_1D"] = copy.deepcopy(app.storage.general["plot_dict_1D"])
+    app.storage.tab["plot_dict_2D"] = copy.deepcopy(app.storage.general["plot_dict_2D"])
 
     with ui.row().classes('w-full gap-4'):
         with ui.column().classes('flex-none w-min'):
