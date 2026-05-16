@@ -6,6 +6,7 @@ import math
 import copy
 from pathlib import Path
 import plotly.graph_objects as go
+from matplotlib.ticker import MaxNLocator
 from nicegui import ui, app
 
 from arbok_inspector.helpers.string_formaters import (
@@ -137,6 +138,7 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
     plot_dict = add_title_to_plot_dict(run, plot_dict, None)
     apply_font_size(plot_dict)
     apply_axis_scale(plot_dict)
+    apply_gridlines(plot_dict)
     if traces:
         return [go.Figure(plot_dict)]
     else:
@@ -191,7 +193,15 @@ def create_2d_figure(
     plot_dict = add_title_to_plot_dict(run, plot_dict, title)
     apply_font_size(plot_dict)
     apply_axis_scale(plot_dict)
-    return go.Figure(plot_dict)
+    x_data = result.coords[x_dim].values.tolist()
+    y_data = result.coords[y_dim].values.tolist()
+    show_grid = app.storage.tab.get("show_gridlines", True)
+    if show_grid:
+        _set_heatmap_tickvals(plot_dict, x_data, y_data)
+    fig = go.Figure(plot_dict)
+    if show_grid:
+        _add_heatmap_gridline_shapes(fig, x_data, y_data)
+    return fig
 
 def create_figures_ui_grid(figures: list[Figure], container, run: BaseRun) -> None:
     """
@@ -248,6 +258,56 @@ def apply_axis_scale(plot_dict: dict) -> None:
         if axis_key in layout:
             log_on = app.storage.tab.get(storage_key, False)
             layout[axis_key]["type"] = "log" if log_on else "linear"
+
+def apply_gridlines(plot_dict: dict) -> None:
+    """Toggle gridlines on axes for non-heatmap plots."""
+    show = app.storage.tab.get("show_gridlines", False)
+    layout = plot_dict["layout"]
+    for axis_key in ("xaxis", "yaxis"):
+        if axis_key in layout:
+            layout[axis_key]["showgrid"] = show
+
+
+def _pixel_half_width(data: list) -> float:
+    """Half the spacing between the first two data points (heatmap pixel width)."""
+    if len(data) < 2:
+        return 0
+    return abs(data[1] - data[0]) / 2
+
+
+def _compute_heatmap_ticks(data: list) -> list:
+    """Compute nice tick positions for a heatmap axis from its data values."""
+    if len(data) < 2:
+        return list(data)
+    lo, hi = min(data), max(data)
+    locator = MaxNLocator(nbins='auto', steps=[1, 2, 2.5, 5, 10])
+    return [t for t in locator.tick_values(lo, hi) if lo <= t <= hi]
+
+
+def _set_heatmap_tickvals(
+        plot_dict: dict, x_data: list, y_data: list) -> None:
+    """Set explicit tickvals on both axes so labels match the gridlines."""
+    layout = plot_dict["layout"]
+    layout["xaxis"]["tickvals"] = _compute_heatmap_ticks(x_data)
+    layout["yaxis"]["tickvals"] = _compute_heatmap_ticks(y_data)
+
+
+def _add_heatmap_gridline_shapes(
+        fig: Figure, x_data: list, y_data: list) -> None:
+    """Draw gridline shapes on top of a heatmap at the tick positions."""
+    line_style = {"color": "rgba(255,255,255,0.3)", "width": 1}
+    x_hw = _pixel_half_width(x_data)
+    y_hw = _pixel_half_width(y_data)
+    x_lo, x_hi = min(x_data) - x_hw, max(x_data) + x_hw
+    y_lo, y_hi = min(y_data) - y_hw, max(y_data) + y_hw
+    for t in _compute_heatmap_ticks(x_data):
+        fig.add_shape(
+            type="line", xref="x", yref="y",
+            x0=t, x1=t, y0=y_lo, y1=y_hi, line=line_style)
+    for t in _compute_heatmap_ticks(y_data):
+        fig.add_shape(
+            type="line", xref="x", yref="y",
+            x0=x_lo, x1=x_hi, y0=t, y1=t, line=line_style)
 
 def add_title_to_plot_dict(run: BaseRun, plot_dict: dict, result_name: str) -> dict:
     """

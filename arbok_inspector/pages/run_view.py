@@ -71,6 +71,7 @@ async def run_page(run_id: str):
     app.storage.tab["plot_font_size"] = 12
     app.storage.tab["log_scale_x"] = False
     app.storage.tab["log_scale_y"] = False
+    app.storage.tab["show_gridlines"] = True
     with resources.files("arbok_inspector.configurations").joinpath("1d_plot.json").open("r") as f:
         app.storage.tab["plot_dict_1D"] = json.load(f)
     with resources.files("arbok_inspector.configurations").joinpath("2d_plot.json").open("r") as f:
@@ -86,7 +87,7 @@ async def run_page(run_id: str):
                     options=['Average', 'histogram'],
                     value='Average',
                     on_change=lambda e: toggle_statistics(e.value,run)
-                ).classes('w-full').props('color=purple')
+                ).classes('w-full').props('toggle-color=purple')
                 ui.separator().classes('w-full my-1')
                 for i, _ in run.parallel_sweep_axes.items():
                     add_dim_dropdown(sweep_idx = i)
@@ -101,7 +102,7 @@ async def run_page(run_id: str):
                         value = value,
                         on_change = lambda e, r=result: run.update_plot_selection(e.value, r),
                     ).classes('text-sm h-4').props('color=purple')
-            with ui.card().classes('w-full gap-2'):
+            with ui.card().classes('w-full gap-2').style('max-width: 200px'):
                 ui.label("Actions:").classes(TITLE_CLASSES)
                 build_run_view_actions()
             with ui.expansion('Run info', icon = 'info').classes('w-full gap-2'):

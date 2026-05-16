@@ -96,7 +96,7 @@ def build_run_view_actions() -> None:
                 on_change=lambda e: set_log_scale('y', e.value),
             ).props('dense')
 
-        # --- Row 6: Download buttons ---
+        # --- Row 6: Download buttons gridline toggle ---
         with ui.row().classes('w-full gap-1 flex-nowrap'):
             ui.button(
                 'Full',
@@ -110,6 +110,13 @@ def build_run_view_actions() -> None:
                 color='darkblue',
                 on_click=download_data_selection
                 ).props('dense size=sm').classes('flex-1 min-w-0')
+        # --- Row 7b :gridline toggle ---
+        with ui.row().classes('w-full gap-1 flex-nowrap'):
+            ui.label('Grid:').classes('text-xs')
+            ui.switch(
+                value=app.storage.tab.get("show_gridlines", True),
+                on_change=lambda e: toggle_gridlines(e.value),
+            ).props('dense')
 
 def on_interval_change(e, timer):
     try:
@@ -129,6 +136,12 @@ def set_plot_font_size(value: float):
     size = int(value)
     app.storage.tab["plot_font_size"] = size
     ui.notify(f'Font size set to {size}', position='top-right')
+    build_xarray_grid()
+
+def toggle_gridlines(value: bool):
+    """Toggle gridlines on/off for all plots, then rebuild."""
+    app.storage.tab["show_gridlines"] = value
+    ui.notify(f'Gridlines {"on" if value else "off"}', position='top-right')
     build_xarray_grid()
 
 def set_log_scale(axis: str, value: bool):
