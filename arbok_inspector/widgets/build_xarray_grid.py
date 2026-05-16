@@ -284,7 +284,7 @@ def _compute_heatmap_ticks(data: list, log: bool = False) -> list:
         positives = [v for v in data if v > 0]
         lo = min(positives) if positives else hi
     if log and lo > 0:
-        locator = LogLocator(base=10, numticks=12)
+        locator = LogLocator(base=10, subs=[1, 2, 5], numticks=12)
     else:
         locator = MaxNLocator(nbins='auto', steps=[1, 2, 2.5, 5, 10])
     return [t for t in locator.tick_values(lo, hi) if lo <= t <= hi]
