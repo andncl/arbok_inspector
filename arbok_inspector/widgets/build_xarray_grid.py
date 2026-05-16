@@ -85,6 +85,8 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
             )
     plot_dict["data"] = traces
     plot_dict = add_title_to_plot_dict(run, plot_dict, None)
+    apply_font_size(plot_dict)
+    apply_axis_scale(plot_dict)
     if traces:
         return [go.Figure(plot_dict)]
     else:
@@ -133,6 +135,8 @@ def create_2d_figure(
     plot_dict["data"][0]["y"] = result.coords[y_dim].values.tolist()
     title = result_name.replace("__", ".")
     plot_dict = add_title_to_plot_dict(run, plot_dict, title)
+    apply_font_size(plot_dict)
+    apply_axis_scale(plot_dict)
     return go.Figure(plot_dict)
 
 def create_figures_ui_grid(figures: list[Figure], container, run: BaseRun) -> None:
@@ -165,6 +169,29 @@ def create_figures_ui_grid(figures: list[Figure], container, run: BaseRun) -> No
                                 .classes('w-full h-full')\
                                 .style(f'min-height: {int(800/num_rows)}px;')
                         plot_idx += 1
+
+def apply_font_size(plot_dict: dict) -> None:
+    """Apply the user-configured font size to axis labels, ticks, and legend."""
+    size = app.storage.tab.get("plot_font_size", 12)
+    layout = plot_dict["layout"]
+    for axis_key in ("xaxis", "yaxis"):
+        if axis_key in layout:
+            layout[axis_key].setdefault("title", {}).setdefault("font", {})["size"] = size
+            layout[axis_key].setdefault("tickfont", {})["size"] = size
+    if "legend" in layout:
+        layout["legend"].setdefault("font", {})["size"] = size
+    for trace in plot_dict.get("data", []):
+        if "colorbar" in trace:
+            trace["colorbar"].setdefault("tickfont", {})["size"] = size
+            trace["colorbar"].setdefault("title", {}).setdefault("font", {})["size"] = size
+
+def apply_axis_scale(plot_dict: dict) -> None:
+    """Apply log/linear scale to axes based on user toggle."""
+    layout = plot_dict["layout"]
+    for axis_key, storage_key in (("xaxis", "log_scale_x"), ("yaxis", "log_scale_y")):
+        if axis_key in layout:
+            log_on = app.storage.tab.get(storage_key, False)
+            layout[axis_key]["type"] = "log" if log_on else "linear"
 
 def add_title_to_plot_dict(run: BaseRun, plot_dict: dict, result_name: str) -> dict:
     """
