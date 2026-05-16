@@ -6,7 +6,7 @@ import math
 import copy
 from pathlib import Path
 import plotly.graph_objects as go
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator, LogLocator
 from nicegui import ui, app
 
 from arbok_inspector.helpers.string_formaters import (
@@ -275,12 +275,18 @@ def _pixel_half_width(data: list) -> float:
     return abs(data[1] - data[0]) / 2
 
 
-def _compute_heatmap_ticks(data: list) -> list:
+def _compute_heatmap_ticks(data: list, log: bool = False) -> list:
     """Compute nice tick positions for a heatmap axis from its data values."""
     if len(data) < 2:
         return list(data)
     lo, hi = min(data), max(data)
-    locator = MaxNLocator(nbins='auto', steps=[1, 2, 2.5, 5, 10])
+    if log and lo == 0:
+        positives = [v for v in data if v > 0]
+        lo = min(positives) if positives else hi
+    if log and lo > 0:
+        locator = LogLocator(base=10, numticks=12)
+    else:
+        locator = MaxNLocator(nbins='auto', steps=[1, 2, 2.5, 5, 10])
     return [t for t in locator.tick_values(lo, hi) if lo <= t <= hi]
 
 
@@ -288,8 +294,10 @@ def _set_heatmap_tickvals(
         plot_dict: dict, x_data: list, y_data: list) -> None:
     """Set explicit tickvals on both axes so labels match the gridlines."""
     layout = plot_dict["layout"]
-    layout["xaxis"]["tickvals"] = _compute_heatmap_ticks(x_data)
-    layout["yaxis"]["tickvals"] = _compute_heatmap_ticks(y_data)
+    log_x = app.storage.tab.get("log_scale_x", False)
+    log_y = app.storage.tab.get("log_scale_y", False)
+    layout["xaxis"]["tickvals"] = _compute_heatmap_ticks(x_data, log=log_x)
+    layout["yaxis"]["tickvals"] = _compute_heatmap_ticks(y_data, log=log_y)
 
 
 def _add_heatmap_gridline_shapes(
@@ -300,11 +308,13 @@ def _add_heatmap_gridline_shapes(
     y_hw = _pixel_half_width(y_data)
     x_lo, x_hi = min(x_data) - x_hw, max(x_data) + x_hw
     y_lo, y_hi = min(y_data) - y_hw, max(y_data) + y_hw
-    for t in _compute_heatmap_ticks(x_data):
+    log_x = app.storage.tab.get("log_scale_x", False)
+    log_y = app.storage.tab.get("log_scale_y", False)
+    for t in _compute_heatmap_ticks(x_data, log=log_x):
         fig.add_shape(
             type="line", xref="x", yref="y",
             x0=t, x1=t, y0=y_lo, y1=y_hi, line=line_style)
-    for t in _compute_heatmap_ticks(y_data):
+    for t in _compute_heatmap_ticks(y_data, log=log_y):
         fig.add_shape(
             type="line", xref="x", yref="y",
             x0=x_lo, x1=x_hi, y0=t, y1=t, line=line_style)
