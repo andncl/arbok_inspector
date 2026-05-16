@@ -68,13 +68,16 @@ async def run_page(run_id: str):
             loading_dialog.close()
     app.storage.tab["placeholders"] = {'plots': None}
     app.storage.tab["run"] = run
+    app.storage.tab["plot_font_size"] = 12
+    app.storage.tab["log_scale_x"] = False
+    app.storage.tab["log_scale_y"] = False
     with resources.files("arbok_inspector.configurations").joinpath("1d_plot.json").open("r") as f:
         app.storage.tab["plot_dict_1D"] = json.load(f)
     with resources.files("arbok_inspector.configurations").joinpath("2d_plot.json").open("r") as f:
         app.storage.tab["plot_dict_2D"] = json.load(f)
 
     with ui.row().classes('w-full gap-4'):
-        with ui.column().classes('flex-none'):
+        with ui.column().classes('flex-none w-min'):
             with ui.card().classes('w-full gap-0 p-2'):
                 ui.label(f'Run-ID: {run_id}').classes('text-2xl font-bold')
             with ui.card().classes('w-full gap-2'):
