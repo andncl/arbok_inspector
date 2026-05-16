@@ -86,7 +86,7 @@ class BaseRun(ABC):
         Prepare the run by loading dataset and initializing attributes
         """
         self.last_avg_subset: Dataset = self.full_data_set
-        self.last_avg_dict: dict[str, DataArray] = {var_name: var for var_name, var in self.full_data_set.data_vars.items()}
+        self.last_avg_dict: Dataset = self.full_data_set
         self.load_sweep_dict()
         self.dims: list[Dim] = list(self.sweep_dict.values())
         self.dim_axis_option: dict[str, str|list[Dim]] = self.set_dim_axis_option()
@@ -310,6 +310,9 @@ class BaseRun(ABC):
         self.last_avg_dict = sub_set
         sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
         print(f"Selecting subset with: {sel_dict}")
+        if isinstance(sub_set, dict):
+            return {name: var.isel(**sel_dict).squeeze()
+                    for name, var in sub_set.items()}
         sub_set = sub_set.isel(**sel_dict).squeeze()
         print("subset dimensions", list(sub_set.dims))
         return {var_name: var for var_name, var in sub_set.data_vars.items()}
