@@ -68,16 +68,21 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
     run = app.storage.tab["run"]
     container = app.storage.tab["placeholders"]['plots']
     container.clear()
-    if run.dim_axis_option['x-axis'] is None and run.show_histogram is False:
+    if (run.dim_axis_option['x-axis'] is None
+            and not run.show_histogram
+            and not run.show_fft):
         ui.notify(
             'Please select at least one dimension for the x-axis to display plots.<br>',
-            color = 'red')
+            color='red')
         return
 
     figures = []
     results_same_trace = {}
     for result_name in run.plot_selection:
-        if run.show_histogram:
+        if run.show_fft:
+            ds = run.generate_fft_subset(
+                has_new_data=has_new_data, exclude_dc=run.fft_exclude_dc)
+        elif run.show_histogram:
             ds = run.generate_binned_subset(has_new_data=has_new_data)
         else:
             ds = run.generate_subset_dict(has_new_data=has_new_data)
@@ -112,7 +117,9 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
         plotly figure
     """
     print("Creating 1D plot")
-    if run.dim_axis_option['x-axis']:
+    if run.show_fft and not run.dim_axis_option['x-axis']:
+        x_dim = None  # will use the single dim from each result
+    elif run.dim_axis_option['x-axis']:
         x_dim = run.dim_axis_option['x-axis'].name
     else:
         x_dim = 'Current'
@@ -120,23 +127,24 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
     plot_dict = copy.deepcopy(app.storage.tab["plot_dict_1D"])
     trace_template = plot_dict.get("data", [{}])[0] if plot_dict.get("data") else {}
     for result_name, result in results_dict.items():
-        if x_dim in result.coords:
+        effective_x = x_dim if x_dim else result.dims[0]
+        if effective_x in result.coords:
             trace = {
                 "type": "scatter",
                 "mode": trace_template.get("mode", "lines+markers"),
                 "name": result_name.replace("__", "."),
-                "x": result.coords[x_dim].values.tolist(),
+                "x": result.coords[effective_x].values.tolist(),
                 "y": result.values.tolist(),
             }
             if "marker" in trace_template:
                 trace["marker"] = copy.deepcopy(trace_template["marker"])
             traces.append(trace)
             plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(
-                result, x_dim)
+                result, effective_x)
 
         else:
             ui.notify(
-                f"Result {result_name} does not have coordinates for {x_dim}",
+                f"Result {result_name} does not have coordinates for {effective_x}",
                 type = "negative"
             )
     plot_dict["data"] = traces
@@ -177,11 +185,11 @@ def create_2d_figure(
         run (BaseRun): Run object of measurement
     """
     print("Creating 2D plot for result:", result_name)
-    x_dim = run.dim_axis_option['x-axis'].name
-    try:
+    x_dim = run.dim_axis_option['x-axis'].name if run.dim_axis_option['x-axis'] else result.dims[1]
+    if run.dim_axis_option['y-axis']:
         y_dim = run.dim_axis_option['y-axis'].name
-    except AttributeError:
-        y_dim = 'Current'
+    else:
+        y_dim = next((d for d in result.dims if d != x_dim), result.dims[0])
     plot_dict = copy.deepcopy(app.storage.tab["plot_dict_2D"])
     plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(
         result, x_dim)

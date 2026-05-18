@@ -323,3 +323,73 @@ class TestFindDataVariable:
     def test_multiple_matches_raises(self, dataset):
         with pytest.raises(ValueError, match="Multiple"):
             find_data_variable_from_keyword(dataset, "readout")
+
+
+# ─── Tests for compute_fft ──────────────────────────────────────────────────
+
+class TestComputeFFT:
+    from arbok_inspector.analysis.prepare_data import compute_fft
+
+    @pytest.fixture
+    def sine_array(self):
+        """1D DataArray containing a pure sine wave at 5 Hz."""
+        t = np.linspace(0, 1, 100, endpoint=False)
+        data = np.sin(2 * np.pi * 5 * t)
+        return xr.DataArray(data, dims=["time"], coords={"time": t})
+
+    @pytest.fixture
+    def sine_2d_array(self):
+        """2D DataArray: voltage(3) x time(100) with sine at 5 Hz."""
+        t = np.linspace(0, 1, 100, endpoint=False)
+        voltages = [0.0, 0.5, 1.0]
+        data = np.array([np.sin(2 * np.pi * 5 * t) for _ in voltages])
+        return xr.DataArray(
+            data, dims=["voltage", "time"],
+            coords={"voltage": voltages, "time": t},
+        )
+
+    def test_output_dims_replace_fft_dim(self, sine_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        result = compute_fft(sine_array, dim="time")
+        assert "frequency" in result.dims
+        assert "time" not in result.dims
+
+    def test_peak_at_correct_frequency(self, sine_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        result = compute_fft(sine_array, dim="time", exclude_dc=True)
+        freqs = result.coords["frequency"].values
+        peak_idx = int(result.values.argmax())
+        assert abs(freqs[peak_idx] - 5.0) < 1.5
+
+    def test_exclude_dc_removes_zero_freq(self, sine_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        result = compute_fft(sine_array, dim="time", exclude_dc=True)
+        assert 0.0 not in result.coords["frequency"].values
+
+    def test_include_dc(self, sine_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        result = compute_fft(sine_array, dim="time", exclude_dc=False)
+        assert result.coords["frequency"].values[0] == 0.0
+
+    def test_2d_fft_preserves_other_dim(self, sine_2d_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        result = compute_fft(sine_2d_array, dim="time")
+        assert "voltage" in result.dims
+        assert "frequency" in result.dims
+        assert result.sizes["voltage"] == 3
+
+    def test_invalid_dim_raises(self, sine_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        with pytest.raises(ValueError, match="not found"):
+            compute_fft(sine_array, dim="nonexistent")
+
+    def test_size_1_dim_raises(self):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        data = xr.DataArray([1.0], dims=["x"], coords={"x": [0.0]})
+        with pytest.raises(ValueError, match="at least 2"):
+            compute_fft(data, dim="x")
+
+    def test_output_values_are_power(self, sine_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        result = compute_fft(sine_array, dim="time", exclude_dc=False)
+        assert (result.values >= 0).all()

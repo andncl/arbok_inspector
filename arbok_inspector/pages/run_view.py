@@ -160,7 +160,7 @@ def _on_plot_selection_change(run: BaseRun, value: bool, readout_name: str):
 def toggle_statistics(value: str, run: BaseRun):
     """Toggle between average and histogram display modes."""
     if value == 'Average':
-        if run.show_histogram is True:
+        if run.show_histogram:
             avg_keyword = app.storage.general["avg_axis"]
             dim_to_y = None
             for avg_dim in run.dim_axis_option['average']:
@@ -174,13 +174,15 @@ def toggle_statistics(value: str, run: BaseRun):
                     run.update_subset_dims(dim_to_y, 'y-axis')
         run.show_histogram = False
     elif value == 'histogram':
-        if run.show_histogram is not True:
+        if run.show_fft:
+            ui.notify('Cannot enable histogram while FFT is active. '
+                      'Please remove the FFT dimension first.', type='warning')
+            return
+        if not run.show_histogram:
             dim_to_bin = run.dim_axis_option['y-axis']
             if dim_to_bin:
                 run.update_subset_dims(dim_to_bin, 'average')
         run.show_histogram = True
-    else:
-        run.show_histogram = False
     build_xarray_grid(has_new_data=True)
 
 
@@ -210,14 +212,21 @@ def add_dim_dropdown(sweep_idx: int, dim_widgets: dict[str, DimWidget]):
     if dim.option == 'select_value':
         with dw.slider_container:
             dw.build_slider(run, on_plot=lambda: build_xarray_grid())
+    elif dim.option == 'fft':
+        with dw.slider_container:
+            dw.build_fft_switch(run, on_plot=lambda: build_xarray_grid(has_new_data=True))
 
 
 def _update_dim_selection(run: BaseRun, dim: Dim, dw: DimWidget, value: str):
     """Handle dimension role dropdown change."""
     dw.delete_slider()
+    dw.delete_fft_switch()
     if value == 'select_value' and dw.slider_container:
         with dw.slider_container:
             dw.build_slider(run, on_plot=lambda: build_xarray_grid())
+    if value == 'fft' and dw.slider_container:
+        with dw.slider_container:
+            dw.build_fft_switch(run, on_plot=lambda: build_xarray_grid(has_new_data=True))
     if value == 'y-axis' and run.show_histogram:
         ui.notify('Cannot set dimension as y-axis while histogram is enabled. '
                   'Please disable histogram first.', type='warning')

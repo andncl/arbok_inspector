@@ -23,6 +23,7 @@ class DimWidget:
         self.slider: Slider | None = None
         self.select_label: Html | None = None
         self.slider_container = None
+        self.fft_dc_switch = None
 
     def sync_selector_to_dim(self):
         """Push dim.option to the UI selector."""
@@ -49,6 +50,25 @@ class DimWidget:
         if self.select_label is not None:
             self.select_label.delete()
             self.select_label = None
+
+    def delete_fft_switch(self):
+        """Remove the FFT DC switch from the UI."""
+        if self.fft_dc_switch is not None:
+            self.fft_dc_switch.delete()
+            self.fft_dc_switch = None
+
+    def build_fft_switch(self, run: BaseRun, on_plot):
+        """Build the 'Exclude DC' switch for FFT mode."""
+        self.fft_dc_switch = ui.switch(
+            'Exclude DC',
+            value=run.fft_exclude_dc,
+            on_change=lambda e: self._on_fft_dc_change(run, e.value, on_plot),
+        ).classes('text-xs').props('dense')
+
+    def _on_fft_dc_change(self, run: BaseRun, exclude_dc: bool, on_plot):
+        """Handle DC switch toggle."""
+        run.fft_exclude_dc = exclude_dc
+        on_plot()
 
     def build_slider(self, run: BaseRun, on_plot):
         """Build the slider and value label for select_value mode."""

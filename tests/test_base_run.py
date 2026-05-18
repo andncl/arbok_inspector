@@ -455,3 +455,75 @@ class TestLoadSweepDict:
         for i, coords in run_3d.parallel_sweep_axes.items():
             assert isinstance(coords, list)
             assert len(coords) >= 1
+
+
+class TestGenerateFFTSubset:
+    """Test generate_fft_subset for the FFT analysis feature."""
+
+    @staticmethod
+    def _find_freq_dim(arr):
+        """Find the frequency dimension name (may be 'frequency' or 'fft_frequency')."""
+        for d in arr.dims:
+            if 'frequency' in d:
+                return d
+        return None
+
+    def test_no_fft_dim_raises(self, run_3d):
+        """Should raise ValueError when no dim is assigned to 'fft' role."""
+        with pytest.raises(ValueError, match="No dimension assigned"):
+            run_3d.generate_fft_subset()
+
+    def test_fft_replaces_dim_with_frequency(self, run_3d):
+        """FFT output should have a frequency dim instead of the FFT dim."""
+        iteration_dim = run_3d.dim_axis_option['average'][0]
+        run_3d.update_subset_dims(iteration_dim, 'fft')
+        result = run_3d.generate_fft_subset()
+        for name, arr in result.items():
+            freq_dim = self._find_freq_dim(arr)
+            assert freq_dim is not None
+            assert "iteration" not in arr.dims
+
+    def test_fft_output_is_power_spectrum(self, run_3d):
+        """FFT values should be non-negative (|FFT|²)."""
+        iteration_dim = run_3d.dim_axis_option['average'][0]
+        run_3d.update_subset_dims(iteration_dim, 'fft')
+        result = run_3d.generate_fft_subset()
+        for name, arr in result.items():
+            assert (arr.values >= 0).all()
+
+    def test_fft_exclude_dc(self, run_3d):
+        """With exclude_dc=True, frequency=0 should not be present."""
+        iteration_dim = run_3d.dim_axis_option['average'][0]
+        run_3d.update_subset_dims(iteration_dim, 'fft')
+        result = run_3d.generate_fft_subset(exclude_dc=True)
+        for name, arr in result.items():
+            freq_dim = self._find_freq_dim(arr)
+            assert 0.0 not in arr.coords[freq_dim].values
+
+    def test_fft_include_dc(self, run_3d):
+        """With exclude_dc=False, frequency=0 should be present."""
+        iteration_dim = run_3d.dim_axis_option['average'][0]
+        run_3d.update_subset_dims(iteration_dim, 'fft')
+        result = run_3d.generate_fft_subset(exclude_dc=False)
+        for name, arr in result.items():
+            freq_dim = self._find_freq_dim(arr)
+            assert arr.coords[freq_dim].values[0] == 0.0
+
+    def test_fft_preserves_other_dims(self, run_3d):
+        """Non-FFT, non-averaged dims should remain in output."""
+        iteration_dim = run_3d.dim_axis_option['average'][0]
+        run_3d.update_subset_dims(iteration_dim, 'fft')
+        result = run_3d.generate_fft_subset()
+        for name, arr in result.items():
+            assert "voltage" in arr.dims
+            assert "frequency" in arr.dims  # original frequency dim preserved
+
+    def test_fft_with_select_value(self, run_4d):
+        """FFT with a select_value dim should apply isel correctly."""
+        iteration_dim = run_4d.dim_axis_option['average'][0]
+        run_4d.update_subset_dims(iteration_dim, 'fft')
+        rep_dim = run_4d.dim_axis_option['select_value'][0]
+        rep_dim.select_index = 2
+        result = run_4d.generate_fft_subset()
+        for name, arr in result.items():
+            assert "rep" not in arr.dims

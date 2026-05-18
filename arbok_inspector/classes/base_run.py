@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 import ast
 
 from arbok_inspector.classes.dim import Dim
-from arbok_inspector.analysis.prepare_data import bin_over_axis
+from arbok_inspector.analysis.prepare_data import bin_over_axis, compute_fft
 
 from xarray import Dataset, DataArray
 
@@ -34,6 +34,7 @@ class BaseRun(ABC):
         self.dims: list[Dim] = []
         self.plot_selection: list[str] = []
         self.show_histogram: bool = False
+        self.fft_exclude_dc: bool = True
         self.plots_per_column: int = 2
 
         self._cached_avg: dict[str, DataArray] | None = None
@@ -41,6 +42,11 @@ class BaseRun(ABC):
 
         self._on_dim_changed: Callable[[Dim], None] | None = None
         self._on_sliders_need_update: Callable[[], None] | None = None
+
+    @property
+    def show_fft(self) -> bool:
+        """True when any dimension is assigned to the 'fft' role."""
+        return self.dim_axis_option.get('fft') is not None
 
     def set_on_dim_changed(self, callback: Callable[[Dim], None]):
         """Register callback invoked when a dim's option changes programmatically."""
@@ -132,6 +138,7 @@ class BaseRun(ABC):
             'x-axis': x_dim,
             'y-axis': y_dim,
             'select_value': remaining,
+            'fft': None,
         }
 
     def select_results_by_keywords(self, keywords: str) -> list[str]:
@@ -173,8 +180,8 @@ class BaseRun(ABC):
 
     def update_subset_dims(self, dim: Dim, selection: str, index: int = 0):
         """
-        Move a dimension to a new role. Handles fallback: setting x-axis or y-axis
-        demotes the previous holder to select_value.
+        Move a dimension to a new role. Handles fallback: setting x-axis, y-axis,
+        or fft demotes the previous holder to select_value.
         """
         self._remove_dim_from_current_role(dim)
 
@@ -185,7 +192,7 @@ class BaseRun(ABC):
             self._notify_dim_changed(dim)
             return
 
-        if selection in ('x-axis', 'y-axis'):
+        if selection in ('x-axis', 'y-axis', 'fft'):
             old_dim = self.dim_axis_option.get(selection)
             self.dim_axis_option[selection] = dim
             dim.option = selection
@@ -200,7 +207,7 @@ class BaseRun(ABC):
         elif dim.option == 'select_value':
             self.dim_axis_option['select_value'].remove(dim)
             dim.select_index = 0
-        elif dim.option in ('x-axis', 'y-axis'):
+        elif dim.option in ('x-axis', 'y-axis', 'fft'):
             self.dim_axis_option[dim.option] = None
         dim.option = None
 
@@ -234,15 +241,19 @@ class BaseRun(ABC):
 
     # ─── Subsetting / Averaging ───────────────────────────────────────────
 
-    def _expected_plot_dims(self, include_current: bool = False) -> set[str]:
+    def _expected_plot_dims(self, include_current: bool = False, include_fft: bool = False) -> set[str]:
         """Compute the set of dimension names that should remain after averaging."""
         dims = {d.name for d in self.dim_axis_option['select_value']}
         if self.dim_axis_option.get('x-axis'):
             dims.add(self.dim_axis_option['x-axis'].name)
         if self.dim_axis_option.get('y-axis'):
             dims.add(self.dim_axis_option['y-axis'].name)
+        if self.dim_axis_option.get('fft'):
+            dims.add(self.dim_axis_option['fft'].name)
         if include_current:
             dims.add('Current')
+        if include_fft:
+            dims.add('frequency')
         return dims
 
     def _get_averaged_dict(self, has_new_data: bool = False) -> dict[str, DataArray]:
@@ -308,3 +319,31 @@ class BaseRun(ABC):
         """Generate the plotable subset as an xarray Dataset."""
         subset_dict = self.generate_subset_dict(has_new_data)
         return Dataset(subset_dict)
+
+    def generate_fft_subset(
+        self, has_new_data: bool = False, exclude_dc: bool = True
+    ) -> dict[str, DataArray]:
+        """
+        Generate FFT power spectrum subset.
+        Pipeline: average → FFT along fft dim → isel for select_value dims.
+
+        Args:
+            has_new_data: Force recomputation of averaged data
+            exclude_dc: If True, exclude the DC (0 Hz) component
+        Returns:
+            Dict of DataArrays with 'frequency' replacing the FFT dim
+        Raises:
+            ValueError: If no dimension is assigned to 'fft' role
+        """
+        fft_dim = self.dim_axis_option.get('fft')
+        if fft_dim is None:
+            raise ValueError("No dimension assigned to 'fft' role")
+
+        averaged = self._get_averaged_dict(has_new_data)
+        fft_result = {}
+        for name, var in averaged.items():
+            if fft_dim.name in var.dims:
+                fft_result[name] = compute_fft(var, dim=fft_dim.name, exclude_dc=exclude_dc)
+            else:
+                fft_result[name] = var
+        return self._apply_selection(fft_result)
