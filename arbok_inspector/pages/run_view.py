@@ -8,43 +8,26 @@ from arbok_inspector.state import inspector
 from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
 from arbok_inspector.widgets.build_xarray_html import build_xarray_html
 from arbok_inspector.widgets.build_run_view_actions import build_run_view_actions
-from arbok_inspector.helpers.unit_formater import unit_formatter
+from arbok_inspector.widgets.dim_widget import DimWidget
+from arbok_inspector.classes.dim import AXIS_OPTIONS
 from arbok_inspector.classes.qcodes_run import QcodesRun
 from arbok_inspector.classes.native_run import NativeRun
 
-from arbok_inspector.classes.dim import Dim
-
 if TYPE_CHECKING:
-    from nicegui.elements.slider import Slider
+    from arbok_inspector.classes.dim import Dim
     from arbok_inspector.classes.base_run import BaseRun
-
-RUN_TABLE_COLUMNS = [
-    {'field': 'name', 'filter': 'agTextColumnFilter', 'floatingFilter': True},
-    {'field': 'size'},
-    {'field': 'x', 'checkboxSelection': True},
-    {'field': 'y', 'checkboxSelection': True},
-    {'field': 'average', 'checkboxSelection': True},
-]
-
-AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
 
 EXPANSION_CLASSES = 'w-full p-0 gap-1 border border-gray-400 rounded-lg no-wrap items-start pt-0 mt-0'
 TITLE_CLASSES = 'text-lg font-semibold'
 
+
 @ui.page('/run/{run_id}')
 async def run_page(run_id: str):
-    """
-    Page showing the details and plots for a specific run.
-
-    Args:
-        run_id (str): ID of the run to display
-    """
+    """Page showing the details and plots for a specific run."""
     ui.page_title(f"{run_id}")
     run_id = int(run_id)
     _ = await ui.context.client.connected()
     app.storage.tab["qcodes_db_path"] = inspector.qcodes_database_path
-    if 'run' in app.storage.tab:
-        print('run already exists!')
     with ui.dialog() as loading_dialog:
         with ui.card().classes('p-6 items-center'):
             ui.label('Loading dataset...')
@@ -56,13 +39,14 @@ async def run_page(run_id: str):
     except Exception as e:
         loading_dialog.close()
         ui.notify(f"Error loading run: {e}", type="negative", close_button="OK")
-        print("Error in create_run:", e)
         ui.label(f"Failed to load run! {run_id}")
         raise e
-        return
     finally:
         if loading_dialog.visible:
             loading_dialog.close()
+
+    dim_widgets: dict[str, DimWidget] = {}
+    app.storage.tab["dim_widgets"] = dim_widgets
     app.storage.tab["placeholders"] = {'plots': None}
     app.storage.tab["run"] = run
     app.storage.tab["plot_font_size"] = 12
@@ -73,6 +57,9 @@ async def run_page(run_id: str):
     app.storage.tab["plot_dict_1D"] = copy.deepcopy(app.storage.general["plot_dict_1D"])
     app.storage.tab["plot_dict_2D"] = copy.deepcopy(app.storage.general["plot_dict_2D"])
 
+    run.set_on_dim_changed(lambda dim: _on_dim_changed(dim, dim_widgets))
+    run.set_on_sliders_need_update(lambda: _on_sliders_need_update(run, dim_widgets))
+
     with ui.row().classes('w-full gap-4'):
         with ui.column().classes('flex-none w-min'):
             with ui.card().classes('w-full gap-0 p-2'):
@@ -82,27 +69,24 @@ async def run_page(run_id: str):
                 ui.toggle(
                     options=['Average', 'histogram'],
                     value='Average',
-                    on_change=lambda e: toggle_statistics(e.value,run)
+                    on_change=lambda e: toggle_statistics(e.value, run)
                 ).classes('w-full').props('toggle-color=purple')
                 ui.separator().classes('w-full my-1')
                 for i, _ in run.parallel_sweep_axes.items():
-                    add_dim_dropdown(sweep_idx = i)
+                    add_dim_dropdown(sweep_idx=i, dim_widgets=dim_widgets)
             with ui.card().classes('w-full gap-2'):
                 ui.label("Results:").classes(TITLE_CLASSES)
                 for i, result in enumerate(run.full_data_set):
-                    value = False
-                    if result in run.plot_selection:
-                        value = True
+                    value = result in run.plot_selection
                     ui.checkbox(
-                        text = result.replace("__", "."),
-                        value = value,
-                        on_change = lambda e, r=result: run.update_plot_selection(e.value, r),
+                        text=result.replace("__", "."),
+                        value=value,
+                        on_change=lambda e, r=result: _on_plot_selection_change(run, e.value, r),
                     ).classes('text-sm h-4').props('color=purple')
             with ui.card().classes('w-full gap-2').style('max-width: 200px'):
                 ui.label("Actions:").classes(TITLE_CLASSES)
                 build_run_view_actions()
-            with ui.expansion('Run info', icon = 'info').classes('w-full gap-2'):
-                # ui.label("Run info:").classes(TITLE_CLASSES)
+            with ui.expansion('Run info', icon='info').classes('w-full gap-2'):
                 for column_name, conf in run.database_columns.items():
                     value = str(conf['value'])
                     if len(value) > 20 or value is None:
@@ -120,8 +104,6 @@ async def run_page(run_id: str):
                 app.storage.tab["placeholders"]["plots"] = ui.row().\
                     classes('w-full min-h-[50vh] p-1 items-stretch')
                 build_xarray_grid()
-
-                    #.style('line-height: 1rem; padding-top: 0; padding-bottom: 0;')
             with ui.expansion('xarray summary', icon='summarize', value=False)\
                 .classes(EXPANSION_CLASSES):
                 build_xarray_html()
@@ -133,28 +115,50 @@ async def run_page(run_id: str):
                 .classes(f"{EXPANSION_CLASSES}  overflow-x-auto"):
                 placeholder_metadata = {}
                 placeholder_metadata['code'] = ui.code(
-                    content = 'Placeholder for QUA program',
-                    language = 'python')\
+                    content='Placeholder for QUA program',
+                    language='python')\
                     .classes('w-full overflow-x-auto whitespace-pre')
                 ui.button(
-                    icon = 'code',
+                    icon='code',
                     text="load qua program",
-                    on_click = lambda: load_qua_code(run, placeholder_metadata),
+                    on_click=lambda: load_qua_code(run, placeholder_metadata),
                 )
                 ui.button(
-                    icon = 'download',
+                    icon='download',
                     text="download serialized qua program",
-                    on_click = lambda: download_qua_code(run),
+                    on_click=lambda: download_qua_code(run),
                 )
 
-def toggle_statistics(value: str, run: BaseRun):
-    """
-    Toggle the display of average and histogram statistics in the plots.
 
-    Args:
-        value (str): The selected statistics option
-        run (BaseRun): The run object containing the data and plot configuration
-    """
+def _on_dim_changed(dim: Dim, dim_widgets: dict[str, DimWidget]):
+    """Callback: sync UI selector when BaseRun changes a dim's option."""
+    dw = dim_widgets.get(dim.name)
+    if dw:
+        dw.sync_selector_to_dim()
+
+
+def _on_sliders_need_update(run: BaseRun, dim_widgets: dict[str, DimWidget]):
+    """Callback: update slider max values after re-averaging."""
+    for dim in run.dim_axis_option['select_value']:
+        dw = dim_widgets.get(dim.name)
+        if dw:
+            max_val = len(run.full_data_set[dim.name]) - 1
+            dw.update_slider_max(max_val)
+
+
+def _on_plot_selection_change(run: BaseRun, value: bool, readout_name: str):
+    """Handle result checkbox toggle."""
+    pretty_name = readout_name.replace("__", ".")
+    run.update_plot_selection(value, readout_name)
+    if readout_name in run.plot_selection:
+        ui.notify(f'Result {pretty_name} added to plot selection', position='top-right')
+    else:
+        ui.notify(f'Result {pretty_name} removed from plot selection', position='top-right')
+    build_xarray_grid(has_new_data=False)
+
+
+def toggle_statistics(value: str, run: BaseRun):
+    """Toggle between average and histogram display modes."""
     if value == 'Average':
         if run.show_histogram is True:
             avg_keyword = app.storage.general["avg_axis"]
@@ -168,157 +172,107 @@ def toggle_statistics(value: str, run: BaseRun):
                 if run.dim_axis_option['select_value']:
                     dim_to_y = run.dim_axis_option['select_value'][0]
                     run.update_subset_dims(dim_to_y, 'y-axis')
-                    dim_to_y.ui_selector.value = 'y-axis'
         run.show_histogram = False
     elif value == 'histogram':
         if run.show_histogram is not True:
             dim_to_bin = run.dim_axis_option['y-axis']
-            print("DIM TO BIN:", dim_to_bin)
-            if dim_to_bin != []: # if binning 1d sweep
+            if dim_to_bin:
                 run.update_subset_dims(dim_to_bin, 'average')
         run.show_histogram = True
     else:
         run.show_histogram = False
     build_xarray_grid(has_new_data=True)
 
-def add_dim_dropdown(sweep_idx: int):
-    """
-    Add a dropdown to select the dimension option for a given sweep index.
 
-    Args:
-        sweep_idx (int): Index of the sweep to add the dropdown for
-    """
-    run = app.storage.tab["run"]
-    width = 'w-full'
+def add_dim_dropdown(sweep_idx: int, dim_widgets: dict[str, DimWidget]):
+    """Add a dropdown to select the dimension option for a given sweep index."""
+    run: BaseRun = app.storage.tab["run"]
     dim = run.sweep_dict[sweep_idx]
-    local_placeholder = {"slider": None}
+    dw = DimWidget(dim)
+    dim_widgets[dim.name] = dw
+
     dims_names = run.parallel_sweep_axes[sweep_idx]
     ui.radio(
-        options = dims_names,
+        options=dims_names,
         value=dim.name,
-        on_change = lambda e: update_sweep_dim_name(dim, e.value)
-        ).classes(f"{width}  text-xs m-0 p-0").props('dense')
+        on_change=lambda e: _update_sweep_dim_name(run, dim, e.value, dw, dim_widgets)
+    ).classes('w-full text-xs m-0 p-0').props('dense')
+
     ui_element = ui.select(
-        options = AXIS_OPTIONS,
-        value = str(dim.option),
-        label = f'{dim.name.replace("__", ".")}',
-        on_change = lambda e: update_dim_selection(
-            dim, e.value, local_placeholder["slider"])
-    ).classes(f"{width} text-sm m-0 p-0").props('dense')
-    dim.ui_selector = ui_element
-    local_placeholder["slider"] = ui.column().classes('w-full')
+        options=AXIS_OPTIONS,
+        value=str(dim.option),
+        label=f'{dim.name.replace("__", ".")}',
+        on_change=lambda e: _update_dim_selection(run, dim, dw, e.value)
+    ).classes('w-full text-sm m-0 p-0').props('dense')
+    dw.selector = ui_element
+
+    dw.slider_container = ui.column().classes('w-full')
     if dim.option == 'select_value':
-        build_dim_slider(run, dim)
+        with dw.slider_container:
+            dw.build_slider(run, on_plot=lambda: build_xarray_grid())
 
-def update_dim_selection(dim: Dim, value: str, slider_placeholder):
-    """
-    Update the dimension/sweep selection and rebuild the plot grid.
 
-    Args:
-        dim (Dim): The dimension object to update
-        value (str): The new selection value
-        slider_placeholder: The UI placeholder to update
-    """
-    run: BaseRun = app.storage.tab["run"]
-    if dim.slider is not None:
-        print("DELETING SLIDER")
-        dim.slider.delete()
-        dim.slider = None
-        dim.select_label.delete()
-        dim.select_label = None
-    if value == 'select_value':
-        with slider_placeholder:
-            build_dim_slider(run, dim)
+def _update_dim_selection(run: BaseRun, dim: Dim, dw: DimWidget, value: str):
+    """Handle dimension role dropdown change."""
+    dw.delete_slider()
+    if value == 'select_value' and dw.slider_container:
+        with dw.slider_container:
+            dw.build_slider(run, on_plot=lambda: build_xarray_grid())
     if value == 'y-axis' and run.show_histogram:
-        ui.notify('Cannot set dimension as y-axis while histogram is enabled. ' \
-                'Please disable histogram first.', type='warning')
-        ui.update()
+        ui.notify('Cannot set dimension as y-axis while histogram is enabled. '
+                  'Please disable histogram first.', type='warning')
         return
     run.update_subset_dims(dim, value)
     dim.option = value
     build_xarray_grid()
 
-def build_dim_slider(run: BaseRun, dim: Dim):
-    """
-    Build a slider for selecting the index of a dimension.
 
-    Args:
-        dim (Dim): The dimension object
-    """
-    dim_size = run.full_data_set.sizes[dim.name]
-    with ui.row().classes("w-full items-center"):
-        with ui.column().classes('flex-grow'):
-            dim.slider = ui.slider(
-                min=0, max=dim_size - 1, step=1, value=0,
-                on_change=lambda e: run.update_subset_dims(dim, 'select_value', e.value),
-                ).classes('flex-grow')\
-                .props('color="purple" markers')
-        dim.select_label = ui.html(content = '', sanitize = False).classes(
-            'shrink-0 text-right px-2 py-1 bg-purple text-white rounded-lg text-xs font-normal text-center')
-        update_value_from_dim_slider(
-            dim.select_label, dim.slider, dim, plot = False)
-        dim.slider.on(
-            'update:model-value',
-            lambda e: update_value_from_dim_slider(dim.select_label, dim.slider, dim),
-            throttle=0.2, leading_events=False)
-
-
-def update_value_from_dim_slider(label, slider, dim: Dim, plot = True):
-    """
-    Update the label next to the slider with the current value and unit.
-
-    Args:
-        label: The UI label to update
-        slider: The UI slider to get the value from
-        dim (Dim): The dimension object
-    """
-    run = app.storage.tab["run"]
-    label_txt = f' {unit_formatter(run, dim, slider.value)} '
-    label.set_content(label_txt)
-    if plot:
-        build_xarray_grid()
-
-def update_sweep_dim_name(dim: Dim, new_name: str):
-    """
-    Update the name of the dimension in the sweep dict and the dim object.
-
-    Args:
-        dim (Dim): The dimension object to update
-        new_name (str): The new name for the dimension
-    """
+def _update_sweep_dim_name(run: BaseRun, dim: Dim, new_name: str,
+                           dw: DimWidget, dim_widgets: dict[str, DimWidget]):
+    """Update the dimension name when the user picks a parallel coordinate."""
+    old_name = dim.name
     dim.name = new_name
-    dim.ui_selector.label = new_name.replace("__", ".")
+    dw.sync_label_to_dim()
+    if old_name in dim_widgets:
+        del dim_widgets[old_name]
+    dim_widgets[new_name] = dw
     build_xarray_grid()
+
 
 def load_qua_code(run: BaseRun, placeholder: dict):
     """Load and display the QUA code for the given run."""
     try:
-        qua_code = run.get_qua_code(as_string = True)
+        qua_code = run.get_qua_code(as_string=True)
         qua_code = qua_code.split("config = {")[0]
         placeholder['code'].set_content(qua_code)
     except Exception as e:
         ui.notify(f'Error loading QUA code: {str(e)}', type='negative')
         raise e
 
+
 def download_qua_code(run: BaseRun) -> None:
     """Download the serialized QUA code for the given run."""
     try:
-        qua_code_bytes = run.get_qua_code(as_string = False)
+        qua_code_bytes = run.get_qua_code(as_string=False)
         ui.download(qua_code_bytes, 'test.py')
-        #os.remove(file_name)
     except Exception as e:
         ui.notify(f'Error downloading QUA code: {str(e)}', type='negative')
         raise e
+
 
 async def create_run(run_id: int) -> BaseRun:
     """Create a Run object for the given run ID."""
     if inspector.database_type == 'qcodes':
         run = QcodesRun(int(run_id))
-    elif inspector.database_type == 'arbok_native':
+    elif inspector.database_type == 'native_arbok':
         run = NativeRun(int(run_id))
     else:
         raise ValueError(
-            "Database type must be 'qcodes' or 'arbok_native is:"
+            "Database type must be 'qcodes' or 'native_arbok', is: "
             f"{inspector.database_type}")
-    await nicegui_run.io_bound(run.prepare_run)
+    await nicegui_run.io_bound(
+        run.prepare_run,
+        avg_axis=app.storage.general.get("avg_axis"),
+        result_keywords=app.storage.general.get("result_keywords", ""),
+    )
     return run

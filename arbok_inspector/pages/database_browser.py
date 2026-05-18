@@ -91,7 +91,7 @@ def build_info_section():
     with ui.card().classes('w-1/3 flex-col'):
         if inspector.database_type == 'qcodes':
             _build_qcodes_db_info_section()
-        elif inspector.database_type == 'native':
+        elif inspector.database_type == 'native_arbok':
             _build_native_db_info_section()
 
 def _build_qcodes_db_info_section():

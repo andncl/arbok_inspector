@@ -14,6 +14,7 @@ from qcodes import config as qc_config
 from qcodes.dataset.sqlite.database import initialise_or_create_database_at, connect
 
 from arbok_inspector.classes.base_run import BaseRun
+from arbok_inspector.state import inspector
 
 if TYPE_CHECKING:
     from xarray import Dataset
@@ -47,7 +48,7 @@ class QcodesRun(BaseRun):
         Args:
             run_id (int): Run ID of the measurement run
         """
-        super().__init__(run_id)
+        super().__init__(run_id, inspector)
         self.db_path = app.storage.tab["qcodes_db_path"]
 
     @with_sqlite_connection

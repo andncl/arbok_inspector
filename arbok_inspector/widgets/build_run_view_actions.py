@@ -1,9 +1,10 @@
 """Module containing function to build run-view options"""
 from __future__ import annotations
 from typing import TYPE_CHECKING
-import os
 import asyncio
 from io import BytesIO
+
+import xarray as xr
 
 from nicegui import app, ui
 from nicegui import run as nicegui_run

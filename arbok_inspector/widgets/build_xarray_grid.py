@@ -95,7 +95,8 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
         elif len(result.dims) == 2:
             figure = create_2d_figure(result_name, result, run)
             figures.append(figure)
-    figures += create_1d_plot(run, results_same_trace)
+    if results_same_trace:
+        figures += create_1d_plot(run, results_same_trace)
     create_figures_ui_grid(figures, container, run)
 
 def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
