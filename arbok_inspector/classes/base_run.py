@@ -2,50 +2,56 @@
 Run class representing a single run of the experiment.
 """
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from abc import ABC, abstractmethod
 import ast
-from nicegui import ui, app
 
 from arbok_inspector.classes.dim import Dim
-from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
-from arbok_inspector.state import ArbokInspector, inspector
 from arbok_inspector.analysis.prepare_data import bin_over_axis
 
 from xarray import Dataset, DataArray
 
-AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis']
+if TYPE_CHECKING:
+    from arbok_inspector.state import ArbokInspector
+
 
 class BaseRun(ABC):
     """
-    Class representing a run with its data and methods
+    Class representing a run with its data and methods.
+    Pure data/logic layer — no UI imports.
     """
     full_data_set: Dataset
-    last_avg_subset: Dataset
-    last_avg_dict: dict[str, DataArray]
     name: str
 
-    def __init__(self, run_id: int):
-        """
-        Constructor for Run class
-
-        Args:
-            run_id (int): ID of the run
-        """
+    def __init__(self, run_id: int, inspector: ArbokInspector):
         self.run_id: int = run_id
         self.title: str = f'Run ID: {run_id}  (-> add experiment)'
-        self.inspector: ArbokInspector =  inspector
-        self.parallel_sweep_axes: dict = {}
+        self.inspector: ArbokInspector = inspector
+        self.parallel_sweep_axes: dict[int, list[str]] = {}
         self.sweep_dict: dict[int, Dim] = {}
         self._database_columns: dict[str, dict[str, str]] = {}
         self.dims: list[Dim] = []
         self.plot_selection: list[str] = []
         self.show_histogram: bool = False
+        self.plots_per_column: int = 2
+
+        self._cached_avg: dict[str, DataArray] | None = None
+        self._cached_avg_dims: set[str] | None = None
+
+        self._on_dim_changed: Callable[[Dim], None] | None = None
+        self._on_sliders_need_update: Callable[[], None] | None = None
+
+    def set_on_dim_changed(self, callback: Callable[[Dim], None]):
+        """Register callback invoked when a dim's option changes programmatically."""
+        self._on_dim_changed = callback
+
+    def set_on_sliders_need_update(self, callback: Callable[[], None]):
+        """Register callback invoked when slider max values need refreshing."""
+        self._on_sliders_need_update = callback
 
     @property
     def database_columns(self) -> dict[str, dict[str, str]]:
-        """Column names of database, with their values and shown labels"""
         return self._database_columns
 
     @abstractmethod
@@ -54,326 +60,251 @@ class BaseRun(ABC):
 
     @abstractmethod
     def _load_dataset(self) -> Dataset:
-        """
-        Load the dataset for the given run ID from the appropriate database type.
-
-        Args:
-            run_id (int): ID of the run
-            database_type (str): Type of the database ('qcodes' or 'arbok')
-        Returns:
-            DataSet: Loaded dataset
-        """
         pass
 
     @abstractmethod
     def get_qua_code(self, as_string: bool = False) -> str:
-        """
-        Retrieve the QUA code associated with this run.
-
-        Returns:
-            qua_code (str): The QUA code as a string
-        """
         pass
 
-    def prepare_run(self) -> None:
-        """Prepare the run by loading the dataset asynchronously."""
+    def prepare_run(self, avg_axis: str | None = None, result_keywords: str = "") -> None:
+        """Prepare the run by loading the dataset."""
         self._database_columns = self._get_database_columns()
         self.full_data_set: Dataset = self._load_dataset()
-        self.process_run_data()
+        self.process_run_data(avg_axis=avg_axis, result_keywords=result_keywords)
 
-    def process_run_data(self) -> None:
-        """
-        Prepare the run by loading dataset and initializing attributes
-        """
-        self.last_avg_subset: Dataset = self.full_data_set
-        self.last_avg_dict: Dataset = self.full_data_set
+    def process_run_data(self, avg_axis: str | None = None, result_keywords: str = "") -> None:
+        """Initialize dimension structure and plot selection from loaded dataset."""
+        self._invalidate_cache()
         self.load_sweep_dict()
-        self.dims: list[Dim] = list(self.sweep_dict.values())
-        self.dim_axis_option: dict[str, str|list[Dim]] = self.set_dim_axis_option()
-        print(self.dims)
+        self.dims = list(self.sweep_dict.values())
+        self.dim_axis_option = self.set_dim_axis_option(avg_axis=avg_axis)
+        self.plot_selection = self.select_results_by_keywords(result_keywords)
 
-        self.plot_selection: list[str] = self.select_results_by_keywords(
-            app.storage.general["result_keywords"]
-        )
-        print(f"Initial plot selection: {self.plot_selection}")
-        self.plots_per_column: int = 2
-        self.plots: list = []
-        self.figures: list = []
+    def _invalidate_cache(self):
+        """Clear the averaged data cache."""
+        self._cached_avg = None
+        self._cached_avg_dims = None
 
-    def load_sweep_dict(self):
-        """
-        Load the sweep dictionary from the dataset
-        TODO: check metadata for sweep information!
-        Returns:
-            sweep_dict (dict): Dictionary with sweep information
-            is_together (bool): True if all sweeps are together, False otherwise
-        """
+    def load_sweep_dict(self) -> dict[int, Dim]:
+        """Build sweep_dict mapping dimension index to Dim objects."""
         self.parallel_sweep_axes = {}
-        dims = self.full_data_set.dims
-        for i, dim in enumerate(dims):
-            dependent_coords = [
-                name for name, coord in self.full_data_set.coords.items() if dim in coord.dims]
-            self.parallel_sweep_axes[i] = dependent_coords
+        for i, dim in enumerate(self.full_data_set.dims):
+            self.parallel_sweep_axes[i] = [
+                name for name, coord in self.full_data_set.coords.items()
+                if dim in coord.dims
+            ]
         self.sweep_dict = {
             i: Dim(names[0]) for i, names in self.parallel_sweep_axes.items()
-            }
+        }
         return self.sweep_dict
 
-    def set_dim_axis_option(self):
+    def set_dim_axis_option(self, avg_axis: str | None = None):
         """
-        Set the default dimension options for the run in 4 steps:
-        1. Set all iteration dims to 'average'
-        2. Set the innermost dim to 'x-axis' (the last one that is not averaged)
-        3. Set the next innermost dim to 'y-axis'
-        4. Set all remaining dims to 'select_value'
-
-        Returns:
-            options (dict): Dictionary with keys 'average', 'select_value', 'y-axis',
+        Assign default roles to dimensions:
+        1. Dims matching avg_axis → 'average'
+        2. Innermost remaining → 'x-axis'
+        3. Next innermost remaining → 'y-axis'
+        4. All others → 'select_value'
         """
-        options = {x: [] for x in AXIS_OPTIONS}
-        print(f"Setting average to {app.storage.general['avg_axis']}")
+        averaged = []
+        remaining = []
         for dim in self.dims:
-            if app.storage.general["avg_axis"] is None:
-                break
-            if app.storage.general["avg_axis"] in dim.name:
+            if avg_axis and avg_axis in dim.name:
                 dim.option = 'average'
-                options['average'].append(dim)
-        for dim in reversed(self.dims):
-            if dim not in options['average'] and dim != options['x-axis']:
-                dim.option = "x-axis"
-                options['x-axis'] = dim
-                print(f"Setting x-axis to {dim.name}")
-                break
-        for dim in reversed(self.dims):
-            if dim not in options['average'] and dim != options['x-axis']:
-                dim.option = 'y-axis'
-                options['y-axis'] = dim
-                print(f"Setting y-axis to {dim.name}")
-                break
-        for dim in self.dims:
-            if dim not in options['average'] and dim != options['x-axis'] and dim != options['y-axis']:
-                dim.option = 'select_value'
-                options['select_value'].append(dim)
-                dim.select_index = 0
-                print(f"Setting select_value to {dim.name}")
-        return options
+                averaged.append(dim)
+            else:
+                remaining.append(dim)
+
+        x_dim = remaining.pop() if remaining else None
+        if x_dim:
+            x_dim.option = 'x-axis'
+
+        y_dim = remaining.pop() if remaining else None
+        if y_dim:
+            y_dim.option = 'y-axis'
+
+        for dim in remaining:
+            dim.option = 'select_value'
+            dim.select_index = 0
+
+        return {
+            'average': averaged,
+            'x-axis': x_dim,
+            'y-axis': y_dim,
+            'select_value': remaining,
+        }
 
     def select_results_by_keywords(self, keywords: str) -> list[str]:
         """
-        Select results by keywords in their name.
-        Args:
-            keywords (list): List of keywords to search for
-        Returns:
-            selected_results (list): List of selected result names
+        Select results whose names match the given keywords.
 
-        TODO: simplify this! way too complicated
+        Args:
+            keywords: String repr of a Python list. Each element can be a string
+                      (substring match) or tuple of strings (all must match).
+        Returns:
+            List of matching data variable names. Falls back to [first_var] if
+            nothing matches or keywords are invalid.
         """
-        print(f"using keywords: {keywords}")
-        try:
-            if len(keywords) == 0:
-                keywords = []
-            else:
-                keywords = ast.literal_eval(keywords)
-        except (SyntaxError, ValueError):
-            print(f"Error parsing keywords: {keywords}")
-            keywords = []
-            ui.notify(
-                f"Error parsing result keywords: {keywords}. Please use a valid Python list.",
-                color='red',
-                position='top-right'
-            )
-        if not isinstance(keywords, list):
-            keywords = [keywords]
-        selected_results = []
-        print(f"using keywords: {keywords}")
+        parsed = self._parse_keywords(keywords)
+        selected = set()
         for result in self.full_data_set.data_vars:
-            for keyword in keywords:
-                if isinstance(keyword, str) and keyword in str(result):
-                    selected_results.append(result)
-                elif isinstance(keyword, tuple) and all(
-                        subkey in str(result) for subkey in keyword):
-                    selected_results.append(result)
-        selected_results = list(set(selected_results))  # Remove duplicates
-        if len(selected_results) == 0:
-            selected_results = [next(iter(self.full_data_set.data_vars))]
-        print(f"Selected results: {selected_results}")
-        return selected_results
+            result_str = str(result)
+            for kw in parsed:
+                if isinstance(kw, str) and kw in result_str:
+                    selected.add(result)
+                elif isinstance(kw, tuple) and all(s in result_str for s in kw):
+                    selected.add(result)
+        if not selected:
+            return [next(iter(self.full_data_set.data_vars))]
+        return list(selected)
+
+    @staticmethod
+    def _parse_keywords(keywords: str) -> list:
+        """Parse a keyword string into a list of str/tuple matchers."""
+        if not keywords:
+            return []
+        try:
+            parsed = ast.literal_eval(keywords)
+        except (SyntaxError, ValueError):
+            return []
+        if not isinstance(parsed, list):
+            parsed = [parsed]
+        return parsed
 
     def update_subset_dims(self, dim: Dim, selection: str, index: int = 0):
         """
-        Update the subset dimensions based on user selection.
-
-        Args:
-            dim (Dim): The dimension object to update
-            selection (str): The new selection option
-                ('average', 'select_value', 'x-axis', 'y-axis')
-            index (int, optional): The index for 'select_value' option. Defaults to None.
+        Move a dimension to a new role. Handles fallback: setting x-axis or y-axis
+        demotes the previous holder to select_value.
         """
-        text = f'Updating subset dims: {dim.name} to {selection}'
-        print(text)
-        ui.notify(text, position='top-right')
+        self._remove_dim_from_current_role(dim)
 
-        ### First, remove old option this dim was on
-        current_averages = self.dim_axis_option['average']
-        if dim in current_averages:
-            print(f"Removing {dim.name} from average")
-            current_averages.remove(dim)
-            dim.option = None
-        current_selected_values = self.dim_axis_option['select_value']
-        if dim in current_selected_values:
-            print(f"Removing {dim.name} from select_value")
-            current_selected_values.remove(dim)
-            dim.option = None
-            dim.select_index = 0
-        if dim.option in ['x-axis', 'y-axis']:
-            print(f"Removing {dim.name} from {dim.option}")
-            self.dim_axis_option[dim.option] = None
-
-        # Then, set new option
-        if selection in ['average', 'select_value']:
+        if selection in ('average', 'select_value'):
             dim.option = selection
             dim.select_index = index
             self.dim_axis_option[selection].append(dim)
-            dim.ui_selector.value = selection
+            self._notify_dim_changed(dim)
             return
-        # for option in ['average', 'select_value']:
-        #     self.dim_axis_option[option] = list(set(self.dim_axis_option[option]))
-        if selection in ['x-axis', 'y-axis']:
-            old_dim = self.dim_axis_option[selection]
+
+        if selection in ('x-axis', 'y-axis'):
+            old_dim = self.dim_axis_option.get(selection)
             self.dim_axis_option[selection] = dim
             dim.option = selection
-            if old_dim:
-                # Set previous dim (having this option) to 'select_value'
-                # Required since x and y axis have to be unique
-                print(old_dim)
-                print(f"Updating {old_dim.name} to {dim.name} on {selection}")
-                if old_dim.option in ['x-axis', 'y-axis']:
-                    self.dim_axis_option['select_value'].append(old_dim)
-                    old_dim.option = 'select_value'
-                    old_dim.ui_selector.value = 'select_value'
-                    self.update_subset_dims(old_dim, 'select_value', old_dim.select_index)
-        dim.ui_selector.update()
+            self._notify_dim_changed(dim)
+            if old_dim and old_dim is not dim:
+                self._demote_to_select_value(old_dim)
 
-    def generate_binned_subset(self, has_new_data: bool = False, bins: int | list = 51) -> dict[str, DataArray]:
-        """
-        Generate the subset of the full dataset based on the current dimension options
-        without averaging over any dimensions, and instead binning the data along the histogram_axis
-        dimension if it is set.
+    def _remove_dim_from_current_role(self, dim: Dim):
+        """Remove dim from whatever role it currently occupies."""
+        if dim.option == 'average':
+            self.dim_axis_option['average'].remove(dim)
+        elif dim.option == 'select_value':
+            self.dim_axis_option['select_value'].remove(dim)
+            dim.select_index = 0
+        elif dim.option in ('x-axis', 'y-axis'):
+            self.dim_axis_option[dim.option] = None
+        dim.option = None
 
-        Returns:
-            sub_set (xarray.Dataset): The subset of the full dataset
-        """
-        last_non_avg_dims = list(list(self.last_avg_dict.values())[0].dims)
-        avg_names = [d.name for d in self.dim_axis_option['average']]
-        print(app.storage.general['avg_axis'])
-        print(avg_names)
-        plot_names = [d.name for d in self.dim_axis_option['select_value']]
-        if self.dim_axis_option['x-axis']:
-            plot_names += [self.dim_axis_option['x-axis'].name] + ['Current']
-        if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
-            binned_set = self.last_avg_dict
-            print(f"Re-using last averaged subset: {list(list(binned_set.values())[0].dims)}")
-        else:
-            print(f"Binning over {avg_names}")
-            binned_set = {}
-            for var_name, var in self.full_data_set.data_vars.items():
-                dataarray = bin_over_axis(var, dim=avg_names, bins=bins)
-                binned_set[var_name] = dataarray
-            self.update_select_sliders()
-        self.last_avg_dict = binned_set
-        sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
-        print(f"Selecting subset with: {sel_dict}")
-        sub_set = {}
-        for var_name, var in binned_set.items():
-            sub_set[var_name] = var.isel(**sel_dict).squeeze()
-        return sub_set
+    def _demote_to_select_value(self, dim: Dim):
+        """Demote a dim from x/y-axis to select_value."""
+        dim.option = 'select_value'
+        self.dim_axis_option['select_value'].append(dim)
+        self._notify_dim_changed(dim)
 
-    def generate_subset_dict(self, has_new_data: bool = False) -> dict[str, DataArray]:
-        """
-        Generate the subset of the full dataset based on the current dimension options.
-        Returns:
-            sub_set (xarray.Dataset): The subset of the full dataset
-        """
-        last_non_avg_dims = list(list(self.last_avg_dict.values())[0].dims)
-        avg_names = [d.name for d in self.dim_axis_option['average']]
-        plot_names = [d.name for d in self.dim_axis_option['select_value']]
-        if self.dim_axis_option['y-axis']:
-            plot_names.append(self.dim_axis_option['y-axis'].name)
-        plot_names.append(self.dim_axis_option['x-axis'].name)
-        if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
-            sub_set = self.last_avg_dict
-            print(f"Re-using last averaged subset: {list(list(sub_set.values())[0].dims)}")
-        else:
-            print(f"Averiging over {avg_names}")
-            sub_set = self.full_data_set.mean(dim=avg_names)
-            self.update_select_sliders()
-        self.last_avg_dict = sub_set
-        sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
-        print(f"Selecting subset with: {sel_dict}")
-        if isinstance(sub_set, dict):
-            return {name: var.isel(**sel_dict).squeeze()
-                    for name, var in sub_set.items()}
-        sub_set = sub_set.isel(**sel_dict).squeeze()
-        print("subset dimensions", list(sub_set.dims))
-        return {var_name: var for var_name, var in sub_set.data_vars.items()}
+    def _notify_dim_changed(self, dim: Dim):
+        if self._on_dim_changed:
+            self._on_dim_changed(dim)
 
-    def generate_subset(self, has_new_data: bool = False) -> dict[str, DataArray]:
+    def update_plot_selection(self, selected: bool, readout_name: str) -> bool:
         """
-        Generate the subset of the full dataset based on the current dimension options.
-        Returns:
-            sub_set (xarray.Dataset): The subset of the full dataset
-        """
-        last_non_avg_dims = list(list(self.last_avg_subset.values())[0].dims)
-        avg_names = [d.name for d in self.dim_axis_option['average']]
-        plot_names = [d.name for d in self.dim_axis_option['select_value']]
-        if self.dim_axis_option['y-axis']:
-            plot_names.append(self.dim_axis_option['y-axis'].name)
-        plot_names.append(self.dim_axis_option['x-axis'].name)
-        if set(plot_names) == set(last_non_avg_dims) and not has_new_data:
-            sub_set = self.last_avg_subset
-            print(f"Re-using last averaged subset: {list(sub_set.dims)}")
-        else:
-            print(f"Averiging over {avg_names}")
-            sub_set = self.full_data_set.mean(dim=avg_names)
-            self.update_select_sliders()
-        self.last_avg_subset = sub_set
-        sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
-        print(f"Selecting subset with: {sel_dict}")
-        sub_set = sub_set.isel(**sel_dict).squeeze()
-        print("subset dimensions", list(sub_set.dims))
-        return sub_set
-
-    def update_plot_selection(self, value: bool, readout_name: str):
-        """
-        Update the plot selection based on user interaction.
+        Add or remove a result from the plot selection.
 
         Args:
-            value (bool): True if the result is selected, False otherwise
-            readout_name (str): Name of the result to update
+            selected: True to add, False to remove.
+            readout_name: Name of the data variable.
+        Returns:
+            True if the selection was actually modified.
         """
-        print("----------------Updating plot selection")
-        print(f"{readout_name= } {value= }")
-        pretty_readout_name = readout_name.replace("__", ".")
-        if readout_name not in self.plot_selection:
+        if selected and readout_name not in self.plot_selection:
             self.plot_selection.append(readout_name)
-            ui.notify(
-                message=f'Result {pretty_readout_name} added to plot selection',
-                position='top-right'
-                )
-        else:
+            return True
+        elif not selected and readout_name in self.plot_selection:
             self.plot_selection.remove(readout_name)
-            ui.notify(
-                f'Result {pretty_readout_name} removed from plot selection',
-                position='top-right'
-            )
-        print(f"{self.plot_selection= }")
-        build_xarray_grid(has_new_data=False)
+            return True
+        return False
 
-    def update_select_sliders(self):
+    # ─── Subsetting / Averaging ───────────────────────────────────────────
+
+    def _expected_plot_dims(self, include_current: bool = False) -> set[str]:
+        """Compute the set of dimension names that should remain after averaging."""
+        dims = {d.name for d in self.dim_axis_option['select_value']}
+        if self.dim_axis_option.get('x-axis'):
+            dims.add(self.dim_axis_option['x-axis'].name)
+        if self.dim_axis_option.get('y-axis'):
+            dims.add(self.dim_axis_option['y-axis'].name)
+        if include_current:
+            dims.add('Current')
+        return dims
+
+    def _get_averaged_dict(self, has_new_data: bool = False) -> dict[str, DataArray]:
         """
-        Update the select sliders based on the current dimension options.
+        Get (or compute) the averaged data as a dict of DataArrays.
+        Uses cache when the averaging dimensions haven't changed.
         """
-        for dim in self.dim_axis_option['select_value']:
-            print(f"Updating slider for {dim.name}")
-            dim.slider._props["max"] = len(self.full_data_set[dim.name]) - 1
-            dim.slider.update()
+        expected = self._expected_plot_dims()
+        if (not has_new_data
+                and self._cached_avg is not None
+                and self._cached_avg_dims == expected):
+            return self._cached_avg
+
+        avg_names = [d.name for d in self.dim_axis_option['average']]
+        averaged = self.full_data_set.mean(dim=avg_names)
+        result = {name: var for name, var in averaged.data_vars.items()}
+        self._cached_avg = result
+        self._cached_avg_dims = expected
+        self._on_sliders_updated()
+        return result
+
+    def _get_binned_dict(self, has_new_data: bool = False, bins: int | list = 51) -> dict[str, DataArray]:
+        """
+        Get (or compute) binned data for histogram mode.
+        """
+        expected = self._expected_plot_dims(include_current=True)
+        if (not has_new_data
+                and self._cached_avg is not None
+                and self._cached_avg_dims == expected):
+            return self._cached_avg
+
+        avg_names = [d.name for d in self.dim_axis_option['average']]
+        binned = {}
+        for var_name, var in self.full_data_set.data_vars.items():
+            binned[var_name] = bin_over_axis(var, dim=avg_names, bins=bins)
+        self._cached_avg = binned
+        self._cached_avg_dims = expected
+        self._on_sliders_updated()
+        return binned
+
+    def _apply_selection(self, data: dict[str, DataArray]) -> dict[str, DataArray]:
+        """Apply isel for all select_value dims, then squeeze."""
+        sel_dict = {d.name: d.select_index for d in self.dim_axis_option['select_value']}
+        if not sel_dict:
+            return data
+        return {name: var.isel(**sel_dict).squeeze() for name, var in data.items()}
+
+    def _on_sliders_updated(self):
+        if self._on_sliders_need_update:
+            self._on_sliders_need_update()
+
+    def generate_subset_dict(self, has_new_data: bool = False) -> dict[str, DataArray]:
+        """Generate the plotable subset as a dict of DataArrays."""
+        averaged = self._get_averaged_dict(has_new_data)
+        return self._apply_selection(averaged)
+
+    def generate_binned_subset(self, has_new_data: bool = False, bins: int | list = 51) -> dict[str, DataArray]:
+        """Generate binned subset (histogram mode)."""
+        binned = self._get_binned_dict(has_new_data, bins)
+        return self._apply_selection(binned)
+
+    def generate_subset(self, has_new_data: bool = False) -> Dataset:
+        """Generate the plotable subset as an xarray Dataset."""
+        subset_dict = self.generate_subset_dict(has_new_data)
+        return Dataset(subset_dict)
