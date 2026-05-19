@@ -80,8 +80,7 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
     results_same_trace = {}
     for result_name in run.plot_selection:
         if run.show_fft:
-            ds = run.generate_fft_subset(
-                has_new_data=has_new_data, exclude_dc=run.fft_exclude_dc)
+            ds = run.generate_fft_subset(has_new_data=has_new_data)
         elif run.show_histogram:
             ds = run.generate_binned_subset(has_new_data=has_new_data)
         else:

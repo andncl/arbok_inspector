@@ -23,7 +23,7 @@ class DimWidget:
         self.slider: Slider | None = None
         self.select_label: Html | None = None
         self.slider_container = None
-        self.fft_dc_switch = None
+        self.fft_range_element = None
 
     def sync_selector_to_dim(self):
         """Push dim.option to the UI selector."""
@@ -51,23 +51,33 @@ class DimWidget:
             self.select_label.delete()
             self.select_label = None
 
-    def delete_fft_switch(self):
-        """Remove the FFT DC switch from the UI."""
-        if self.fft_dc_switch is not None:
-            self.fft_dc_switch.delete()
-            self.fft_dc_switch = None
+    def delete_fft_range(self):
+        """Remove the FFT frequency range element from the UI."""
+        if self.fft_range_element is not None:
+            self.fft_range_element.delete()
+            self.fft_range_element = None
 
-    def build_fft_switch(self, run: BaseRun, on_plot):
-        """Build the 'Exclude DC' switch for FFT mode."""
-        self.fft_dc_switch = ui.switch(
-            'Exclude DC',
-            value=run.fft_exclude_dc,
-            on_change=lambda e: self._on_fft_dc_change(run, e.value, on_plot),
-        ).classes('text-xs').props('dense')
+    def build_fft_range(self, run: BaseRun, on_plot):
+        """Build the frequency range slider for FFT mode."""
+        dim_size = run.full_data_set.sizes[self.dim.name]
+        freq_count = dim_size // 2 + 1
+        if run.fft_freq_range is None:
+            run.fft_freq_range = {'min': 1, 'max': freq_count - 1}
+        self.fft_range_element = ui.range(
+            min=0, max=freq_count - 1, step=1,
+            value={'min': float(run.fft_freq_range['min']),
+                   'max': float(run.fft_freq_range['max'])},
+        ).props('label-always snap color="purple" markers')
+        self.fft_range_element.on(
+            'update:model-value',
+            lambda: self._on_fft_range_change(run, on_plot),
+            throttle=0.3, leading_events=False)
 
-    def _on_fft_dc_change(self, run: BaseRun, exclude_dc: bool, on_plot):
-        """Handle DC switch toggle."""
-        run.fft_exclude_dc = exclude_dc
+    def _on_fft_range_change(self, run: BaseRun, on_plot):
+        """Handle frequency range change — replot without recalculating FFT."""
+        if self.fft_range_element is not None:
+            val = self.fft_range_element.value
+            run.fft_freq_range = {'min': int(val['min']), 'max': int(val['max'])}
         on_plot()
 
     def build_slider(self, run: BaseRun, on_plot):

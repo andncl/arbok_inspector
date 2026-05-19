@@ -491,20 +491,26 @@ class TestGenerateFFTSubset:
         for name, arr in result.items():
             assert (arr.values >= 0).all()
 
-    def test_fft_exclude_dc(self, run_3d):
-        """With exclude_dc=True, frequency=0 should not be present."""
+    def test_fft_freq_range_excludes_dc(self, run_3d):
+        """With fft_freq_range starting at index 1, DC should not be present."""
         iteration_dim = run_3d.dim_axis_option['average'][0]
         run_3d.update_subset_dims(iteration_dim, 'fft')
-        result = run_3d.generate_fft_subset(exclude_dc=True)
+        fft_dim = run_3d.dim_axis_option['fft']
+        freq_count = run_3d.full_data_set.sizes[fft_dim.name] // 2 + 1
+        run_3d.fft_freq_range = {'min': 1, 'max': freq_count - 1}
+        result = run_3d.generate_fft_subset()
         for name, arr in result.items():
             freq_dim = self._find_freq_dim(arr)
             assert 0.0 not in arr.coords[freq_dim].values
 
-    def test_fft_include_dc(self, run_3d):
-        """With exclude_dc=False, frequency=0 should be present."""
+    def test_fft_freq_range_includes_dc(self, run_3d):
+        """With fft_freq_range starting at index 0, DC should be present."""
         iteration_dim = run_3d.dim_axis_option['average'][0]
         run_3d.update_subset_dims(iteration_dim, 'fft')
-        result = run_3d.generate_fft_subset(exclude_dc=False)
+        fft_dim = run_3d.dim_axis_option['fft']
+        freq_count = run_3d.full_data_set.sizes[fft_dim.name] // 2 + 1
+        run_3d.fft_freq_range = {'min': 0, 'max': freq_count - 1}
+        result = run_3d.generate_fft_subset()
         for name, arr in result.items():
             freq_dim = self._find_freq_dim(arr)
             assert arr.coords[freq_dim].values[0] == 0.0

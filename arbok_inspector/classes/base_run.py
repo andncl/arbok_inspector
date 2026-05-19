@@ -34,7 +34,7 @@ class BaseRun(ABC):
         self.dims: list[Dim] = []
         self.plot_selection: list[str] = []
         self.show_histogram: bool = False
-        self.fft_exclude_dc: bool = True
+        self.fft_freq_range: dict[str, int] | None = None
         self.plots_per_column: int = 2
 
         self._cached_avg: dict[str, DataArray] | None = None
@@ -321,15 +321,14 @@ class BaseRun(ABC):
         return Dataset(subset_dict)
 
     def generate_fft_subset(
-        self, has_new_data: bool = False, exclude_dc: bool = True
+        self, has_new_data: bool = False
     ) -> dict[str, DataArray]:
         """
         Generate FFT power spectrum subset.
-        Pipeline: average → FFT along fft dim → isel for select_value dims.
+        Pipeline: average → FFT along fft dim → slice freq range → isel for select_value dims.
 
         Args:
             has_new_data: Force recomputation of averaged data
-            exclude_dc: If True, exclude the DC (0 Hz) component
         Returns:
             Dict of DataArrays with 'frequency' replacing the FFT dim
         Raises:
@@ -343,7 +342,24 @@ class BaseRun(ABC):
         fft_result = {}
         for name, var in averaged.items():
             if fft_dim.name in var.dims:
-                fft_result[name] = compute_fft(var, dim=fft_dim.name, exclude_dc=exclude_dc)
+                fft_result[name] = compute_fft(var, dim=fft_dim.name, exclude_dc=False)
             else:
                 fft_result[name] = var
+
+        if self.fft_freq_range is not None:
+            freq_dim = next(
+                (d for d in next(iter(fft_result.values())).dims
+                 if d.endswith('frequency')), None)
+            if freq_dim:
+                lo = self.fft_freq_range['min']
+                hi = self.fft_freq_range['max']
+                fft_result = {
+                    name: arr.isel({freq_dim: slice(lo, hi + 1)})
+                    for name, arr in fft_result.items()
+                    if freq_dim in arr.dims
+                } | {
+                    name: arr for name, arr in fft_result.items()
+                    if freq_dim not in arr.dims
+                }
+
         return self._apply_selection(fft_result)
