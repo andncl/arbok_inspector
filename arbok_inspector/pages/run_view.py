@@ -27,6 +27,15 @@ async def run_page(run_id: str):
     ui.page_title(f"{run_id}")
     run_id = int(run_id)
     _ = await ui.context.client.connected()
+
+    if inspector.database_type is None:
+        with ui.column().classes('absolute-center items-center gap-4'):
+            ui.icon('warning', color='orange', size='xl')
+            ui.label('No database connected').classes('text-xl')
+            ui.button('Go to connection page', icon='home',
+                      on_click=lambda: ui.navigate.to('/'))
+        return
+
     app.storage.tab["qcodes_db_path"] = inspector.qcodes_database_path
     with ui.dialog() as loading_dialog:
         with ui.card().classes('p-6 items-center'):
