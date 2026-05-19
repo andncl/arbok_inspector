@@ -35,6 +35,7 @@ class BaseRun(ABC):
         self.plot_selection: list[str] = []
         self.show_histogram: bool = False
         self.fft_freq_range: dict[str, int] | None = None
+        self.fft_representation: str = 'PSD'
         self.plots_per_column: int = 2
 
         self._cached_avg: dict[str, DataArray] | None = None
@@ -342,7 +343,7 @@ class BaseRun(ABC):
         fft_result = {}
         for name, var in averaged.items():
             if fft_dim.name in var.dims:
-                fft_result[name] = compute_fft(var, dim=fft_dim.name, exclude_dc=False)
+                fft_result[name] = compute_fft(var, dim=fft_dim.name, representation=self.fft_representation)
             else:
                 fft_result[name] = var
 

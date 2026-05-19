@@ -356,20 +356,31 @@ class TestComputeFFT:
 
     def test_peak_at_correct_frequency(self, sine_array):
         from arbok_inspector.analysis.prepare_data import compute_fft
-        result = compute_fft(sine_array, dim="time", exclude_dc=True)
+        result = compute_fft(sine_array, dim="time")
         freqs = result.coords["frequency"].values
-        peak_idx = int(result.values.argmax())
+        # Skip DC component at index 0
+        peak_idx = int(result.values[1:].argmax()) + 1
         assert abs(freqs[peak_idx] - 5.0) < 1.5
 
-    def test_exclude_dc_removes_zero_freq(self, sine_array):
+    def test_includes_dc_by_default(self, sine_array):
         from arbok_inspector.analysis.prepare_data import compute_fft
-        result = compute_fft(sine_array, dim="time", exclude_dc=True)
-        assert 0.0 not in result.coords["frequency"].values
-
-    def test_include_dc(self, sine_array):
-        from arbok_inspector.analysis.prepare_data import compute_fft
-        result = compute_fft(sine_array, dim="time", exclude_dc=False)
+        result = compute_fft(sine_array, dim="time")
         assert result.coords["frequency"].values[0] == 0.0
+
+    def test_representation_amplitude(self, sine_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        result = compute_fft(sine_array, dim="time", representation='Amplitude')
+        assert (result.values >= 0).all()
+
+    def test_representation_real(self, sine_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        result = compute_fft(sine_array, dim="time", representation='Real')
+        assert "frequency" in result.dims
+
+    def test_representation_imaginary(self, sine_array):
+        from arbok_inspector.analysis.prepare_data import compute_fft
+        result = compute_fft(sine_array, dim="time", representation='Imaginary')
+        assert "frequency" in result.dims
 
     def test_2d_fft_preserves_other_dim(self, sine_2d_array):
         from arbok_inspector.analysis.prepare_data import compute_fft
@@ -391,5 +402,5 @@ class TestComputeFFT:
 
     def test_output_values_are_power(self, sine_array):
         from arbok_inspector.analysis.prepare_data import compute_fft
-        result = compute_fft(sine_array, dim="time", exclude_dc=False)
+        result = compute_fft(sine_array, dim="time")
         assert (result.values >= 0).all()

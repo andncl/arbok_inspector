@@ -24,6 +24,7 @@ class DimWidget:
         self.select_label: Html | None = None
         self.slider_container = None
         self.fft_range_element = None
+        self.fft_repr_select = None
 
     def sync_selector_to_dim(self):
         """Push dim.option to the UI selector."""
@@ -51,18 +52,27 @@ class DimWidget:
             self.select_label.delete()
             self.select_label = None
 
-    def delete_fft_range(self):
-        """Remove the FFT frequency range element from the UI."""
+    def delete_fft_controls(self):
+        """Remove all FFT UI controls."""
         if self.fft_range_element is not None:
             self.fft_range_element.delete()
             self.fft_range_element = None
+        if self.fft_repr_select is not None:
+            self.fft_repr_select.delete()
+            self.fft_repr_select = None
 
-    def build_fft_range(self, run: BaseRun, on_plot):
-        """Build the frequency range slider for FFT mode."""
+    def build_fft_controls(self, run: BaseRun, on_plot):
+        """Build the FFT representation selector and frequency range slider."""
         dim_size = run.full_data_set.sizes[self.dim.name]
         freq_count = dim_size // 2 + 1
         if run.fft_freq_range is None:
             run.fft_freq_range = {'min': 1, 'max': freq_count - 1}
+        repr_labels = {'PSD': 'PSD', 'Amplitude': 'Amp', 'Real': 'Re', 'Imaginary': 'Im'}
+        self.fft_repr_select = ui.toggle(
+            repr_labels,
+            value=run.fft_representation,
+            on_change=lambda e: self._on_fft_repr_change(run, e.value, on_plot),
+        ).props('dense size="sm" toggle-color=purple no-caps spread').classes('w-full')
         self.fft_range_element = ui.range(
             min=0, max=freq_count - 1, step=1,
             value={'min': float(run.fft_freq_range['min']),
@@ -72,6 +82,11 @@ class DimWidget:
             'update:model-value',
             lambda: self._on_fft_range_change(run, on_plot),
             throttle=0.3, leading_events=False)
+
+    def _on_fft_repr_change(self, run: BaseRun, value: str, on_plot):
+        """Handle representation change — recalculates FFT with new output."""
+        run.fft_representation = value
+        on_plot()
 
     def _on_fft_range_change(self, run: BaseRun, on_plot):
         """Handle frequency range change — replot without recalculating FFT."""

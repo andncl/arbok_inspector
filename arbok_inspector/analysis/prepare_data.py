@@ -108,23 +108,24 @@ def avg_dataarray(xdata_array: xr.DataArray, avg_axes: str | list = 'auto') -> x
     return xdata_array
 
 
+FFT_REPRESENTATIONS = ['PSD', 'Amplitude', 'Real', 'Imaginary']
+
+
 def compute_fft(
     data: xr.DataArray,
     dim: str,
-    exclude_dc: bool = True,
+    representation: str = 'PSD',
 ) -> xr.DataArray:
     """
-    Compute the power spectrum (|FFT|²) along a single dimension.
-
-    The FFT dim is replaced by a frequency coordinate derived from the
-    spacing of the original coordinate values.
+    Compute FFT along a single dimension and return the chosen representation.
 
     Args:
         data: Input DataArray
         dim: Dimension name to FFT along
-        exclude_dc: If True, drop the DC (0 Hz) component
+        representation: One of 'PSD' (|FFT|²), 'Amplitude' (|FFT|),
+                        'Real' (Re(FFT)), 'Imaginary' (Im(FFT))
     Returns:
-        DataArray with dim replaced by 'frequency', values are |FFT|²
+        DataArray with dim replaced by 'frequency'
     Raises:
         ValueError: If dim is not in data.dims or has fewer than 2 points
     """
@@ -141,26 +142,27 @@ def compute_fft(
     freqs = np.fft.rfftfreq(n, d=dt)
 
     fft_vals = np.fft.rfft(data.values, axis=data.get_axis_num(dim))
-    power = np.abs(fft_vals) ** 2
 
-    # Choose output dim name, avoiding conflicts with existing dims
+    if representation == 'Real':
+        output = fft_vals.real
+    elif representation == 'Imaginary':
+        output = fft_vals.imag
+    elif representation == 'Amplitude':
+        output = np.abs(fft_vals)
+    else:
+        output = np.abs(fft_vals) ** 2
+
     freq_dim = 'frequency'
     existing_dims = set(d for d in data.dims if d != dim)
     existing_coords = set(data.coords) - {dim}
     while freq_dim in existing_dims or freq_dim in existing_coords:
         freq_dim = 'fft_' + freq_dim
 
-    # Build new dims and coords
     new_dims = [d if d != dim else freq_dim for d in data.dims]
     coords = {d: data.coords[d] for d in data.dims if d != dim and d in data.coords}
     coords[freq_dim] = freqs
 
-    result = xr.DataArray(power, dims=new_dims, coords=coords)
-
-    if exclude_dc:
-        result = result.isel({freq_dim: slice(1, None)})
-
-    return result
+    return xr.DataArray(output, dims=new_dims, coords=coords)
 
 
 def bin_over_axis(

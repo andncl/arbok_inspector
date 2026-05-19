@@ -214,19 +214,19 @@ def add_dim_dropdown(sweep_idx: int, dim_widgets: dict[str, DimWidget]):
             dw.build_slider(run, on_plot=lambda: build_xarray_grid())
     elif dim.option == 'fft':
         with dw.slider_container:
-            dw.build_fft_range(run, on_plot=lambda: build_xarray_grid())
+            dw.build_fft_controls(run, on_plot=lambda: build_xarray_grid())
 
 
 def _update_dim_selection(run: BaseRun, dim: Dim, dw: DimWidget, value: str):
     """Handle dimension role dropdown change."""
     dw.delete_slider()
-    dw.delete_fft_range()
+    dw.delete_fft_controls()
     if value == 'select_value' and dw.slider_container:
         with dw.slider_container:
             dw.build_slider(run, on_plot=lambda: build_xarray_grid())
     if value == 'fft' and dw.slider_container:
         with dw.slider_container:
-            dw.build_fft_range(run, on_plot=lambda: build_xarray_grid())
+            dw.build_fft_controls(run, on_plot=lambda: build_xarray_grid())
     if value == 'y-axis' and run.show_histogram:
         ui.notify('Cannot set dimension as y-axis while histogram is enabled. '
                   'Please disable histogram first.', type='warning')
