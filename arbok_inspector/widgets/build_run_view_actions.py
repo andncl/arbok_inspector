@@ -96,6 +96,11 @@ def build_run_view_actions() -> None:
                 value=app.storage.tab.get("log_scale_y", False),
                 on_change=lambda e: set_log_scale('y', e.value),
             ).props('dense')
+            ui.switch(
+                'Z',
+                value=app.storage.tab.get("log_scale_z", False),
+                on_change=lambda e: set_log_scale('z', e.value),
+            ).props('dense')
 
         # --- Row 6: Download buttons gridline toggle ---
         with ui.row().classes('w-full gap-1 flex-nowrap'):

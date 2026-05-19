@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import math
 import copy
 from pathlib import Path
+import numpy as np
 import plotly.graph_objects as go
 from matplotlib.ticker import MaxNLocator, LogLocator
 from nicegui import ui, app
@@ -205,6 +206,7 @@ def create_2d_figure(
     plot_dict = add_title_to_plot_dict(run, plot_dict, title)
     apply_font_size(plot_dict)
     apply_axis_scale(plot_dict)
+    apply_colorscale_log(plot_dict)
     x_data = result.coords[x_dim].values.tolist()
     y_data = result.coords[y_dim].values.tolist()
     show_grid = app.storage.tab.get("show_gridlines", True)
@@ -270,6 +272,32 @@ def apply_axis_scale(plot_dict: dict) -> None:
         if axis_key in layout:
             log_on = app.storage.tab.get(storage_key, False)
             layout[axis_key]["type"] = "log" if log_on else "linear"
+
+def apply_colorscale_log(plot_dict: dict) -> None:
+    """Apply logarithmic color mapping while preserving original z values on hover."""
+    if not app.storage.tab.get("log_scale_z", False):
+        return
+    for trace in plot_dict.get("data", []):
+        if "z" not in trace:
+            continue
+        z = np.array(trace["z"], dtype=float)
+        z_pos = z[z > 0]
+        if z_pos.size == 0:
+            continue
+        z_log = np.where(z > 0, np.log10(z), np.nan)
+        trace["customdata"] = z.tolist()
+        trace["z"] = z_log.tolist()
+        trace["hovertemplate"] = "x: %{x}<br>y: %{y}<br>z: %{customdata:.4g}<extra></extra>"
+        zmin, zmax = np.nanmin(z_log), np.nanmax(z_log)
+        trace["zmin"] = float(zmin)
+        trace["zmax"] = float(zmax)
+        tick_exponents = np.arange(math.floor(zmin), math.ceil(zmax) + 1)
+        if "colorbar" not in trace:
+            trace["colorbar"] = {}
+        trace["colorbar"]["tickvals"] = tick_exponents.tolist()
+        trace["colorbar"]["ticktext"] = [
+            f"10<sup>{int(e)}</sup>" for e in tick_exponents]
+
 
 def apply_gridlines(plot_dict: dict) -> None:
     """Toggle gridlines on axes and clamp log range when data contains 0."""
