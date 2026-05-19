@@ -9,7 +9,7 @@ Hence we are using dev:run and not main:main
 from nicegui import ui
 
 from arbok_inspector.state import inspector
-from arbok_inspector.pages import database_browser, greeter, run_view
+from arbok_inspector.pages import database_browser, greeter_qcodes, run_view
 
 def run():
     ui.run(

@@ -61,6 +61,8 @@ def build_xarray_grid_hide(has_new_data: bool = False) -> None:
 def build_xarray_grid(has_new_data: bool = False) -> None:
     """
     Build a grid of xarray plots for the given run.
+    Shows a loading dialog (deferred via timer) only when heavy computation
+    is needed (new data, histogram, or FFT recalculation).
 
     Args:
         has_new_data (bool): Flag indicating if there is new data to plot.
@@ -77,6 +79,28 @@ def build_xarray_grid(has_new_data: bool = False) -> None:
             color='red')
         return
 
+    heavy = has_new_data or run.show_histogram or run.show_fft
+
+    if heavy:
+        loading = ui.dialog().props('persistent')
+        with loading, ui.card().classes('items-center'):
+            ui.spinner('dots', size='xl', color='purple')
+            ui.label('Calculating...').classes('text-sm')
+        loading.open()
+
+        def _compute():
+            try:
+                _build_plots(run, container, has_new_data)
+            finally:
+                loading.close()
+
+        ui.timer(0.1, _compute, once=True)
+    else:
+        _build_plots(run, container, has_new_data)
+
+
+def _build_plots(run, container, has_new_data: bool) -> None:
+    """Core plot-building logic."""
     figures = []
     results_same_trace = {}
     for result_name in run.plot_selection:

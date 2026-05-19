@@ -45,6 +45,7 @@ arbok_inspector = [
 
 [project.scripts]
 arbok-inspector = "arbok_inspector.main:main"
+arbok-inspector-native = "arbok_inspector.main_native:main"
 arbok-inspector-dev = "arbok_inspector.dev:main"
 
 [tool.uv]
