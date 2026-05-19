@@ -128,6 +128,15 @@ def _build_plots(run, container, has_new_data: bool) -> None:
         figures += create_1d_plot(run, results_same_trace)
     create_figures_ui_grid(figures, container, run)
 
+def _strip_data(plot_dict: dict) -> dict:
+    """Return a copy of the plot dict with large data arrays removed."""
+    stripped = copy.deepcopy(plot_dict)
+    for trace in stripped.get("data", []):
+        for key in ("x", "y", "z", "customdata"):
+            trace.pop(key, None)
+    return stripped
+
+
 def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
     """
     Creates plotly figure with all 1D traces in it.
@@ -177,6 +186,7 @@ def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
     apply_axis_scale(plot_dict)
     apply_gridlines(plot_dict)
     if traces:
+        app.storage.tab["last_figure_1d"] = _strip_data(plot_dict)
         return [go.Figure(plot_dict)]
     else:
         return []
@@ -231,6 +241,7 @@ def create_2d_figure(
     apply_font_size(plot_dict)
     apply_axis_scale(plot_dict)
     apply_colorscale_log(plot_dict)
+    app.storage.tab["last_figure_2d"] = _strip_data(plot_dict)
     x_data = result.coords[x_dim].values.tolist()
     y_data = result.coords[y_dim].values.tolist()
     show_grid = app.storage.tab.get("show_gridlines", True)

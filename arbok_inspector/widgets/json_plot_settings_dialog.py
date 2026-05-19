@@ -74,12 +74,24 @@ class JsonPlotSettingsDialog:
                     'overflow: auto; max-height: 90vh')
         return dialog
 
+    def _figure_key(self):
+        """Storage key for the last rendered figure."""
+        if self.dimension == 'plot_dict_1D':
+            return 'last_figure_1d'
+        elif self.dimension == 'plot_dict_2D':
+            return 'last_figure_2d'
+        return None
+
     def open(self):
-        """Open the dialog."""
-        print("Opening dialog and setting json data")
+        """Open the dialog showing the last rendered figure config."""
         self.dialog.open()
-        self.json_editor.properties['content']['json'] = copy.deepcopy(
-            self._get_storage()[self.dimension])
+        fig_key = self._figure_key()
+        storage = self._get_storage()
+        if fig_key and fig_key in storage:
+            data = copy.deepcopy(storage[fig_key])
+        else:
+            data = copy.deepcopy(storage[self.dimension])
+        self.json_editor.properties['content']['json'] = data
         self.json_editor.update()
 
     async def set_editor_data(self):
@@ -90,6 +102,9 @@ class JsonPlotSettingsDialog:
         else:
             json_data = json.loads(json_data["text"])
         self._get_storage()[self.dimension] = json_data
+        fig_key = self._figure_key()
+        if fig_key:
+            self._get_storage()[fig_key] = copy.deepcopy(json_data)
         ui.notify('Settings applied', type='positive', position='top-right')
         if self.storage == 'tab':
             build_xarray_grid()
