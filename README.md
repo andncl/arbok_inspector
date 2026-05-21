@@ -18,8 +18,9 @@ This is how arbok_inspector streamlines your data inspection:
 - Browser based approach ensures cross system compatibily
 - Selected runs are opened in a new tab and run on a separate thread
   - this avoids blocking the entire application when loading big datasets
+- Built-in FFT analysis (PSD, amplitude, real, imaginary) and histogram binning
 - plotting backend is plotly which natively returns html
-  - plotly plot customization is declarative and can therefore be tweaked in a simple json editor without implementing each customization by hand
+  - full customizability by editing the plotly JSON directly from the web app, no code changes needed
 - runs are only loaded on demand
   - startup time in plottr can be several minutes for large databases
   - SQL queries load only the given days upon database selection, only loads respective runs once day is selected
@@ -64,6 +65,8 @@ Note, this will likely not work on Windows! Try `python -m dev` while being in t
 Contributing & help 🙌
 
 Contributions, bug reports, and small feature requests are welcome. If you want to add a visualization or a new page, use `pages/` and `widgets/` for examples of how UI components are composed. When opening a PR, please keep changes focused and include a short description of how to exercise the change locally.
+
+For architecture details, data flow, conventions, and testing guidance see [DEV_GUIDE.md](DEV_GUIDE.md).
 
 License
 
