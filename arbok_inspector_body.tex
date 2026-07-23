@@ -1,0 +1,289 @@
+%% arbok_inspector_body.tex
+%% ========================
+%% Pure content — no \documentclass, no \begin{document}.
+%% Include this file via \input{arbok_inspector_body} from either:
+%%   - The standalone paper wrapper (arbok_inspector_paper.tex)
+%%   - A thesis chapter (e.g., \chapter{arbok-inspector}\input{...})
+%%
+%% Required packages in the parent document:
+%%   graphicx, hyperref, amsmath, booktabs, xcolor, float, amssymb (for \checkmark)
+%%
+%% Required command in the parent document (or define as no-op):
+%%   \placeholder{description}  — renders a placeholder box for screenshots
+%%
+%% References use \cite{} keys defined in the parent's bibliography.
+
+%% ============================================================
+\section{Motivation and significance}
+%% ============================================================
+
+The iterative nature of quantum device characterization demands rapid feedback between measurement execution and data interpretation.
+In semiconductor spin qubit experiments, a typical measurement campaign produces hundreds to thousands of individual runs per day, each containing multi-dimensional datasets spanning voltage sweeps, time traces, frequency spectra, and repeated acquisitions~\cite{nickl2025eight, steinacker2025industry}.
+The ability to quickly inspect, slice, and compare these datasets directly influences the speed at which experimentalists can tune devices, diagnose failures, and iterate on measurement protocols.
+
+The de facto standard for instrument control and data acquisition in many quantum computing laboratories is QCoDeS~\cite{qcodes}, which stores measurement results in SQLite databases as structured datasets.
+While QCoDeS provides a robust data acquisition layer, its ecosystem offers limited tooling for post-acquisition data browsing and visualization.
+The primary third-party tool for this purpose, plottr~\cite{plottr}, loads the entire database into memory at startup and processes all datasets synchronously.
+For databases containing thousands of runs, which is common after weeks of continuous measurements, this results in startup times of several minutes and an interface that blocks during data loading.
+Furthermore, plottr operates as a desktop application with a fixed visualization pipeline, offering limited customization of plot aesthetics and no support for advanced on-the-fly analysis such as Fourier transforms or histogram-based data binning.
+
+These limitations are particularly acute in the context of large-scale measurement campaigns enabled by frameworks such as arbok-driver~\cite{nickl2025arbok}, where the rate of data production significantly exceeds what conventional inspection tools can handle interactively.
+As qubit arrays scale from two to eight or more qubits~\cite{nickl2025eight}, the dimensionality of typical measurement datasets grows correspondingly, with individual runs containing four or more sweep dimensions plus multiple readout channels.
+Manual inspection of such datasets requires flexible dimension assignment, where the user can dynamically choose which dimensions to plot, average over, or slice through, without re-running any analysis scripts.
+
+To address these challenges, arbok-inspector was developed as a browser-based inspection and visualization tool specifically designed for quantum measurement databases.
+The tool provides lazy-loading database access, where only metadata is fetched during browsing and full datasets are loaded on demand when a specific run is opened.
+Each run opens in an isolated browser tab, preventing any single slow-loading dataset from blocking interaction with other data.
+The visualization layer offers fully interactive Plotly-based plots with user-configurable dimension roles, enabling rapid exploration of high-dimensional datasets through a point-and-click interface.
+The tool supports both the standard QCoDeS SQLite format and a native PostgreSQL/MinIO backend for arbok-driver measurements, and provides real-time analysis capabilities including averaging, Fourier transforms, and histogram binning without requiring external scripts.
+
+%% ============================================================
+\section{Software description}
+%% ============================================================
+
+arbok-inspector is structured as a multi-page web application built on NiceGUI~\cite{nicegui}, a Python framework that wraps Vue.js, Quasar, and Tailwind CSS into a server-rendered interface accessible through any modern browser.
+The application follows a three-page workflow: connection, browsing, and visualization.
+A schematic overview of the architecture is shown in Fig.~\ref{fig:inspector_architecture}.
+
+\placeholder{Block diagram showing the three-layer architecture: Database Layer (QCoDeS SQLite / PostgreSQL + MinIO), Application Layer (ArbokInspector singleton, DatabaseBackend abstraction, BaseRun data logic), and Presentation Layer (NiceGUI pages: Greeter, Browser, RunView). Arrows show data flow from database through backend to xarray datasets to Plotly figures.}
+
+\begin{figure}[H]
+\caption{Architecture of arbok-inspector showing the separation between database backends, the core data processing layer, and the browser-based presentation layer.}
+\label{fig:inspector_architecture}
+\end{figure}
+
+\subsection{Software architecture}
+
+The application state is managed by a global singleton, \texttt{ArbokInspector}, which holds all connection objects, the active database backend, and shared configuration.
+This singleton mediates between the user interface and the underlying data sources, ensuring that connection state persists across page navigations.
+
+Data access is abstracted through a \texttt{DatabaseBackend} interface with two concrete implementations.
+The \texttt{QcodesBackend} queries QCoDeS SQLite databases directly using raw SQL to extract run metadata, including timestamps, experiment names, and parameter configurations.
+The \texttt{NativeArbokBackend} connects to a PostgreSQL database via SQLAlchemy for metadata and retrieves measurement arrays from MinIO object storage in Zarr format.
+This abstraction allows the same browsing and visualization interface to operate transparently over either storage system.
+
+The core data processing is encapsulated in the \texttt{BaseRun} class, which manages the lifecycle of a single measurement dataset.
+Upon opening a run, the dataset is loaded into an xarray~\cite{xarray} \texttt{Dataset} object, providing labeled multi-dimensional array access with automatic alignment and broadcasting.
+The \texttt{BaseRun} class maintains a list of \texttt{Dim} objects, each representing one coordinate dimension of the dataset and carrying an assigned role: x-axis, y-axis, average, select-value, or FFT.
+When a dimension role changes, the class recomputes the appropriate data subset, applying averaging, slicing, or spectral analysis as needed, and triggers a callback to update the visualization.
+
+This separation between the data logic layer and the user interface layer is a deliberate design choice.
+The \texttt{BaseRun} and \texttt{Dim} classes contain no UI imports and are fully testable in isolation, while the presentation layer binds to them through callbacks and observer patterns.
+This architecture enables the same data processing pipeline to be used programmatically without launching the GUI.
+
+\subsection{Database browsing}
+
+The browsing interface provides a two-panel layout for navigating measurement databases.
+The left panel displays an AG Grid table listing all days on which measurements were recorded, with run counts for each day.
+Selecting a day populates the right panel with the individual runs from that date, showing run identifiers, experiment names, and key metadata.
+Double-clicking a run opens it in a new browser tab for detailed inspection.
+
+\placeholder{Screenshot of the database browser page showing the day selector on the left (AG Grid table with dates and run counts) and the run selector on the right (AG Grid table with run IDs, names, and timestamps). The settings panel at the top shows the auto-plot filter and JSON template editors.}
+
+\begin{figure}[H]
+\caption{Database browser interface showing day-level and run-level navigation with metadata preview.}
+\label{fig:inspector_browser}
+\end{figure}
+
+A key design decision is that only metadata is loaded during browsing.
+Unlike approaches that pre-load all datasets, arbok-inspector queries only the lightweight run metadata tables, resulting in near-instantaneous navigation regardless of database size.
+Full dataset loading occurs only when a user explicitly opens a run for visualization.
+
+The browser page also provides configuration options for automatic dimension assignment.
+Users can define keywords that, when matched against coordinate names, automatically assign dimensions to specific roles upon opening a run.
+For example, coordinates containing ``iteration'' can be automatically assigned to the average role, eliminating repetitive manual configuration for standard measurement types.
+
+\subsection{Run visualization}
+
+The run visualization page is the primary workspace for data exploration.
+It opens in an isolated browser tab with its own state, allowing multiple runs to be inspected simultaneously without interference.
+
+\placeholder{Screenshot of the run view page showing: left sidebar with dimension role selectors (dropdowns for each coordinate showing x-axis/y-axis/average/select-value/fft options), sliders for select-value dimensions, and result variable checkboxes. Main content area showing a 2D heatmap (e.g., charge stability diagram) with Plotly interactive controls.}
+
+\begin{figure}[H]
+\caption{Run visualization interface showing dimension controls and an interactive 2D plot of a charge stability map measurement.}
+\label{fig:inspector_runview_2d}
+\end{figure}
+
+The left sidebar exposes all dataset coordinates as configurable dimensions.
+Each dimension has a role selector that determines how it participates in the visualization:
+\begin{itemize}
+    \item \textbf{x-axis}: mapped to the horizontal plot axis.
+    \item \textbf{y-axis}: mapped to the vertical axis or used as the second sweep dimension in 2D plots.
+    \item \textbf{Average}: data is averaged over this dimension before plotting.
+    \item \textbf{Select value}: a slider allows the user to select a specific index along this dimension, displaying a single slice.
+    \item \textbf{FFT}: a Fourier transform is computed along this dimension, converting the data to the frequency domain.
+\end{itemize}
+
+When two dimensions are assigned as x-axis and y-axis, the tool renders a 2D heatmap using Plotly's heatmap trace type.
+When only one axis is assigned, a 1D line plot is generated for each selected result variable.
+The plot configuration, including color scales, axis labels, font sizes, and trace styling, is fully customizable through in-app JSON editors that expose the underlying Plotly figure specification.
+
+\placeholder{Screenshot showing a 1D plot view with multiple traces (e.g., sensor signal vs.\ detuning voltage) and the dimension sidebar configured with one x-axis dimension and one averaged dimension. Show the slider for a select-value dimension if applicable.}
+
+\begin{figure}[H]
+\caption{One-dimensional plot view with multiple result traces and configurable dimension roles.}
+\label{fig:inspector_runview_1d}
+\end{figure}
+
+\subsection{Analysis capabilities}
+
+Beyond static visualization, arbok-inspector provides several on-the-fly analysis features that operate within the visualization page without requiring external scripts.
+
+\paragraph{Averaging.}
+Any coordinate dimension can be assigned the average role, causing the data to be reduced along that axis by computing the mean.
+This is commonly used to average over repeated acquisitions (shots) in single-shot readout experiments, converting raw single-shot data into averaged expectation values.
+
+\paragraph{Histogram binning.}
+As an alternative to simple averaging, the tool supports histogram-based binning where repeated measurements are accumulated into a probability distribution rather than collapsed to a mean value.
+This mode is essential for spin readout experiments where the distribution of outcomes, rather than their average, reveals the underlying qubit state~\cite{jones2026midcircuit, huang2024fidelity}.
+When histogram mode is enabled, all dimensions assigned to the average role are collapsed into a binned distribution rather than a mean.
+The bin edges are computed automatically from the data statistics (mean $\pm\,3\sigma$, 51 bins by default), and the result is displayed as a 2D heatmap where the vertical axis represents bin centers (labeled ``Current'') and the horizontal axis shows the remaining sweep dimension.
+This produces a visual representation of how the measurement outcome distribution evolves across the sweep parameter, directly revealing features such as charge transitions, spin-dependent tunneling thresholds, and readout visibility.
+The histogram computation uses a vectorized implementation based on \texttt{searchsorted}, enabling interactive performance even for datasets with millions of data points.
+Sentinel dimensions introduced by the arbok-driver framework are automatically trimmed before binning to avoid edge artifacts.
+
+\placeholder{Screenshot of histogram mode showing a 2D heatmap where the x-axis is a voltage sweep parameter and the y-axis shows the binned sensor signal distribution (bin centers). The bimodal distribution characteristic of single-shot spin readout should be visible as two horizontal bands with varying intensity across a charge transition.}
+
+\begin{figure}[H]
+\caption{Histogram binning mode displaying the distribution of single-shot readout outcomes as a function of gate voltage. The bimodal structure reveals spin-dependent tunneling at charge transitions.}
+\label{fig:inspector_histogram}
+\end{figure}
+
+\paragraph{Fourier analysis.}
+Assigning the FFT role to a dimension triggers a discrete Fourier transform along that axis.
+The user can select between power spectral density, amplitude, real, and imaginary representations.
+A frequency range slider allows interactive filtering of the displayed spectrum.
+This capability is particularly useful for noise spectroscopy and dynamical decoupling experiments where frequency-domain features directly reveal decoherence mechanisms~\cite{stuyck2024noise}.
+
+\placeholder{Screenshot showing the FFT analysis mode: a frequency-domain plot (power spectral density vs.\ frequency) with the FFT controls visible in the sidebar, including the representation selector (PSD/Amplitude/Real/Imaginary) and the frequency range slider.}
+
+\begin{figure}[H]
+\caption{Fourier analysis mode showing a power spectral density computed on-the-fly from time-domain measurement data.}
+\label{fig:inspector_fft}
+\end{figure}
+
+\paragraph{Live monitoring.}
+An auto-reload timer can be configured to periodically refresh the dataset from the database, enabling live visualization of ongoing measurements.
+This is particularly useful during long sweeps where intermediate results can inform decisions about whether to continue, abort, or modify the measurement.
+
+\subsection{Plot customization}
+
+All plots are rendered using Plotly~\cite{plotly}, providing interactive zoom, pan, hover inspection, and export capabilities natively in the browser.
+The visual appearance of plots is controlled by JSON template files that specify default styling for 1D and 2D plot types.
+Users can modify these templates through an in-app JSON editor, and changes are reflected immediately in all subsequently rendered plots.
+
+For individual plots, a dialog allows direct editing of the complete Plotly figure JSON specification.
+This provides access to the full Plotly API without leaving the application, enabling fine-grained control over axis ranges, annotations, color scales, subplot layouts, and trace properties.
+Modified figures can be exported directly for publication use.
+
+\placeholder{Screenshot of the JSON editor dialog showing the Plotly figure specification on the left and the rendered plot preview on the right, demonstrating how users can customize individual plots for publication.}
+
+\begin{figure}[H]
+\caption{In-app JSON editor for direct manipulation of the Plotly figure specification, enabling publication-quality plot customization.}
+\label{fig:inspector_json_editor}
+\end{figure}
+
+%% ============================================================
+\section{Software functionalities}
+%% ============================================================
+
+The usage workflow of arbok-inspector proceeds through three stages: connect, browse, and visualize.
+
+\paragraph{Connect.}
+The user launches the application via the command line (\texttt{arbok-inspector} for QCoDeS mode or \texttt{arbok-inspector-native} for the PostgreSQL/MinIO backend).
+On the greeter page, connection details are provided: a file path to a QCoDeS SQLite database, or PostgreSQL and MinIO credentials for the native backend.
+Upon successful connection, the user is redirected to the database browser.
+
+\paragraph{Browse.}
+The database browser presents measurement runs organized by date.
+The user navigates through days and selects runs of interest based on metadata such as experiment name, run ID, and timestamp.
+Keyword-based filtering allows automatic assignment of dimension roles when runs are opened, streamlining repetitive inspection of standardized measurement types.
+
+\paragraph{Visualize.}
+Opening a run loads the full dataset on demand and presents it in the visualization interface.
+The user assigns dimension roles through dropdown selectors, adjusts sliders for select-value dimensions, and selects which result variables to display.
+Plots update reactively as configuration changes.
+The user can switch between averaging and histogram modes, enable FFT analysis, adjust font sizes and axis scaling, and export data or figures.
+
+Table~\ref{tab:inspector_features} summarizes the key features of arbok-inspector compared to existing tools.
+
+\begin{table}[H]
+\centering
+\caption{Feature comparison between arbok-inspector and plottr for QCoDeS database visualization.}
+\label{tab:inspector_features}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Feature} & \textbf{arbok-inspector} & \textbf{plottr} \\
+\midrule
+Lazy database loading & \checkmark & -- \\
+Non-blocking multi-tab interface & \checkmark & -- \\
+Interactive Plotly plots & \checkmark & -- \\
+Configurable dimension roles & \checkmark & \checkmark \\
+In-app JSON plot editing & \checkmark & -- \\
+On-the-fly FFT analysis & \checkmark & -- \\
+Histogram binning mode & \checkmark & -- \\
+Live measurement monitoring & \checkmark & \checkmark \\
+Native arbok-driver backend & \checkmark & -- \\
+Cross-platform (browser-based) & \checkmark & -- \\
+Desktop application & -- & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ============================================================
+\section{Illustrative example}
+%% ============================================================
+
+To demonstrate a typical usage scenario, consider inspecting a charge stability map measurement acquired using arbok-driver on an eight-qubit silicon device~\cite{nickl2025eight}.
+The measurement sweeps two gate voltages across a defined range and records four sensor signals simultaneously, producing a four-dimensional dataset (outer sweep $\times$ inner sweep $\times$ repetitions $\times$ sensors).
+
+The user launches arbok-inspector and connects to the QCoDeS database file containing the measurement results.
+In the database browser, they navigate to the relevant day and identify the stability map run by its experiment name.
+Double-clicking the run opens it in a new tab, where the dataset loads in under one second despite the database containing over 2000 runs.
+
+In the visualization tab, the tool automatically assigns the two voltage sweep dimensions to the x-axis and y-axis roles based on configured keywords, and assigns the repetition dimension to the average role.
+The resulting 2D heatmap immediately reveals the charge stability diagram.
+The user can then use the select-value slider on the sensor dimension to cycle through the four readout channels, inspecting each double-dot pair's stability diagram without any scripting.
+
+If the user wants to examine the shot noise distribution at a specific point in the sweep, they can switch from averaging mode to histogram mode, reassign one voltage dimension to select-value, and use the slider to navigate to a charge transition.
+The resulting histogram reveals the bimodal distribution characteristic of single-shot spin readout, providing immediate visual confirmation of readout fidelity.
+
+\placeholder{Composite figure showing the workflow: (a) database browser with the stability map run highlighted, (b) 2D heatmap of the charge stability diagram with automatic dimension assignment, (c) histogram mode showing the bimodal single-shot distribution at a specific point.}
+
+\begin{figure}[H]
+\caption{Illustrative workflow: (a) selecting a measurement run in the database browser, (b) automatic 2D visualization of a charge stability map, (c) switching to histogram mode to inspect single-shot readout distributions.}
+\label{fig:inspector_workflow}
+\end{figure}
+
+%% ============================================================
+\section{Impact}
+%% ============================================================
+
+arbok-inspector addresses a practical bottleneck in quantum device characterization workflows by providing rapid, interactive access to measurement databases that would otherwise require custom analysis scripts or slow-loading desktop tools.
+The lazy-loading architecture eliminates the multi-minute startup penalty that accumulates as databases grow, maintaining sub-second responsiveness regardless of database size.
+The isolated tab-based interface allows experimentalists to compare multiple datasets side by side, a workflow that is essential during device tuning when parameters must be adjusted based on trends observed across successive measurements.
+
+The tool has been deployed internally at Diraq across multiple measurement setups, where it serves as the primary interface for inspecting measurement results during device tuning, gate calibration, and noise characterization campaigns.
+Its integration with both QCoDeS and the native arbok-driver backend ensures compatibility with existing laboratory infrastructure while providing enhanced capabilities for arbok-driver users.
+
+By lowering the friction between data acquisition and visual inspection, arbok-inspector enables a faster feedback loop in the tune-measure-analyze cycle that governs experimental progress in quantum computing research.
+New team members can immediately browse and understand historical measurement data through the visual interface, without needing to learn the specifics of data loading scripts or analysis pipelines.
+The in-app analysis capabilities, particularly FFT and histogram binning, reduce the need to context-switch to external tools for routine data inspection tasks.
+
+The browser-based architecture provides inherent cross-platform compatibility and opens pathways to remote collaboration, where team members can access the same measurement database simultaneously from different locations.
+Because each tab operates independently, multiple researchers can inspect different datasets concurrently without interfering with each other's analysis state.
+
+%% ============================================================
+\section{Conclusions}
+%% ============================================================
+
+We have presented arbok-inspector, a browser-based visualization and inspection tool for quantum measurement databases that addresses the practical limitations of existing solutions.
+The tool's lazy-loading architecture, isolated multi-tab interface, and interactive Plotly-based visualization provide a responsive and flexible environment for exploring multi-dimensional measurement data.
+On-the-fly analysis capabilities including averaging, histogram binning, and Fourier transforms enable rapid data assessment without external scripts.
+
+The dual-backend design supporting both QCoDeS SQLite databases and the native PostgreSQL/MinIO format ensures broad compatibility with existing quantum measurement infrastructure.
+The tool is particularly well suited to high-throughput measurement campaigns where the volume and dimensionality of data exceed what conventional inspection tools can handle interactively.
+
+Future development will focus on extending the analysis capabilities to include fitting routines, automated feature extraction, and integration with machine learning-based classification algorithms.
+Additional planned features include comparative views for overlaying data from multiple runs, annotation and tagging of measurement results, and export pipelines for generating publication-ready figures with consistent styling.
