@@ -98,6 +98,34 @@ The `inspector.backend` is set during connection and used by `day_selector.py` a
 - `_on_dim_changed(dim)` → `run_view.py` syncs the matching `DimWidget`
 - `_on_sliders_need_update()` → `run_view.py` updates slider max values
 
+## Histogram Mode
+
+Histogram mode replaces simple averaging with binned distributions. When enabled (`run.show_histogram = True`), dimensions assigned to the `average` role are collapsed into histograms rather than means.
+
+**Data flow:**
+1. `run_view.py` toggle switches between `'Average'` and `'histogram'` modes
+2. `build_xarray_grid.py` calls `run.generate_binned_subset()` instead of `run.generate_subset_dict()`
+3. `BaseRun._get_binned_dict()` calls `bin_over_axis()` for each data variable
+4. Result has original non-binned dims + a new `'Current'` dim (bin centers)
+
+**How `bin_over_axis` works** (in `analysis/prepare_data.py`):
+- Takes a DataArray and list of dimension names to bin over
+- Arbok sentinel dimensions (names containing `'arbok'`) are trimmed (last value is padding)
+- Bin axes are moved to the end and flattened into one sample axis
+- Bin edges: `mean ± 3σ`, 51 bins by default (auto-computed from finite values)
+- Vectorized histogram via `np.searchsorted` + scatter-add (fast even for millions of points)
+- Output: DataArray with dims `[*kept_dims, 'Current']`, where `'Current'` coords are bin centers
+
+**Plot rendering:**
+- Since histogram converts 1D results (after averaging) into 2D (sweep × bins), they are rendered as 2D heatmaps
+- Exception: variables ending in `'diff'` or `'state'` are kept as 1D line plots (already processed)
+- The y-axis label shows `'Current'` (bin centers in the original measurement units)
+
+**Constraints:**
+- Histogram mode is mutually exclusive with FFT mode
+- Cannot assign a dimension as `y-axis` while histogram is active (histogram provides its own y-axis)
+- Toggling histogram forces a full recomputation (no cache reuse from average mode)
+
 ## Key Patterns
 
 - **Lazy loading**: Datasets load only when a run is opened, not at startup
