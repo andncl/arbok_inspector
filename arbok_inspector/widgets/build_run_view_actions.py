@@ -12,6 +12,7 @@ from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.json_plot_settings_dialog import (
     JsonPlotSettingsDialog)
 from arbok_inspector.widgets.build_xarray_grid import request_plot_update
+from arbok_inspector.helpers.figure_builder import DEFAULT_FONT_SIZE, FONT_SIZE_STEP
 
 if TYPE_CHECKING:
     from arbok_inspector.run_session import RunSession
@@ -82,10 +83,11 @@ def build_run_view_actions(session: RunSession) -> None:
 
             ui.number(
                 label='Font',
-                value=settings.get("plot_font_size", 12),
-                min=4,
-                max=40,
-                step=1,
+                value=settings.get("plot_font_size", DEFAULT_FONT_SIZE),
+                # browsers step from `min`: keep min/max on the default's step grid
+                min=5,
+                max=39,
+                step=FONT_SIZE_STEP,
                 format='%.0f',
                 on_change=lambda e: set_plot_font_size(session, e.value),
             ).props('dense outlined').classes('flex-1 min-w-0 text-xs')

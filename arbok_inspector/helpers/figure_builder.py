@@ -31,6 +31,8 @@ TRACE_SPECIFIC_KEYS = DATA_KEYS + ("name",)
 GRIDLINE_STYLE = {"color": "rgba(255,255,255,0.3)", "width": 1}
 TITLE_FONT_SIZE = 10
 DEFAULT_MAX_HEATMAP_POINTS = 1000
+DEFAULT_FONT_SIZE = 15
+FONT_SIZE_STEP = 2
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,7 @@ class PlotSettings:
     """User plot settings, captured on the event loop right before a render."""
     plot_dict_1d: dict
     plot_dict_2d: dict
-    font_size: int = 12
+    font_size: int = DEFAULT_FONT_SIZE
     log_x: bool = False
     log_y: bool = False
     log_z: bool = False

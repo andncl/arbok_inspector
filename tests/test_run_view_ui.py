@@ -58,7 +58,7 @@ def show_run(monkeypatch):
     """Returns an async context manager opening the run page for a dataset."""
     monkeypatch.setattr(inspector, "database_type", "qcodes")
     monkeypatch.setattr(run_view, "_default_settings", lambda: {
-        "plot_font_size": 12, "log_scale_x": False, "log_scale_y": False,
+        "plot_font_size": 15, "log_scale_x": False, "log_scale_y": False,
         "log_scale_z": False, "show_gridlines": True,
         "plot_dict_1D": load_template("1d_plot.json"),
         "plot_dict_2D": load_template("2d_plot.json"),
@@ -241,3 +241,23 @@ async def test_decay_and_fft_are_mutually_exclusive(show_run):
         assert voltage_select.value == "y-axis"
         assert session.run.dim_axis_option["fft"] is None
         assert session.run.dim_axis_option["decay"].name == "time"
+
+
+async def test_font_size_default_and_step(show_run):
+    from arbok_inspector.helpers.figure_builder import DEFAULT_FONT_SIZE, FONT_SIZE_STEP
+    simulation, _ = show_run(make_dataset_4d())
+    async with simulation as user:
+        session = await open_run(user)
+        font = next(n for n in user.find(ui.number).elements if n.props.get("label") == "Font")
+        assert font.value == DEFAULT_FONT_SIZE == 15
+        assert font.props["step"] == FONT_SIZE_STEP == 2
+        # browser arrows step from `min`, so the default must lie on that grid
+        assert (DEFAULT_FONT_SIZE - font.props["min"]) % FONT_SIZE_STEP == 0
+        [plot] = plots(user)
+        layout = plot.figure["layout"]
+        assert layout["xaxis"]["tickfont"]["size"] == 15
+        assert layout["yaxis"]["title"]["font"]["size"] == 15
+
+        font.value = DEFAULT_FONT_SIZE + FONT_SIZE_STEP
+        await session.plot_grid.wait_idle()
+        assert plot.figure["layout"]["xaxis"]["tickfont"]["size"] == 17

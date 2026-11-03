@@ -12,7 +12,7 @@ from nicegui import ui
 from nicegui import run as nicegui_run
 
 from arbok_inspector.helpers.figure_builder import (
-    PlotSettings, FigureBundle, build_figures
+    DEFAULT_FONT_SIZE, PlotSettings, FigureBundle, build_figures
 )
 from arbok_inspector.helpers.render_scheduler import RenderScheduler
 from arbok_inspector.helpers.string_formaters import title_formater
@@ -137,7 +137,7 @@ class PlotGrid:
         return PlotSettings(
             plot_dict_1d=settings["plot_dict_1D"],
             plot_dict_2d=settings["plot_dict_2D"],
-            font_size=settings.get("plot_font_size", 12),
+            font_size=settings.get("plot_font_size", DEFAULT_FONT_SIZE),
             log_x=settings.get("log_scale_x", False),
             log_y=settings.get("log_scale_y", False),
             log_z=settings.get("log_scale_z", False),

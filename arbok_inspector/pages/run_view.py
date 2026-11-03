@@ -8,6 +8,7 @@ from nicegui import run as nicegui_run
 
 from arbok_inspector.state import inspector
 from arbok_inspector.run_session import RunSession, register_session
+from arbok_inspector.helpers.figure_builder import DEFAULT_FONT_SIZE
 from arbok_inspector.widgets.build_xarray_grid import PlotGrid, request_plot_update
 from arbok_inspector.widgets.build_xarray_html import build_xarray_html
 from arbok_inspector.widgets.build_run_view_actions import build_run_view_actions
@@ -134,7 +135,7 @@ async def run_page(run_id: str):
 def _default_settings() -> dict:
     """Tab-local plot settings, initialised from the cross-tab plot templates."""
     return {
-        "plot_font_size": 12,
+        "plot_font_size": DEFAULT_FONT_SIZE,
         "log_scale_x": False,
         "log_scale_y": False,
         "log_scale_z": False,

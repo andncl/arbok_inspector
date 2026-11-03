@@ -99,7 +99,7 @@ async def test_run_page_with_real_qcodes_runs(qcodes_db, monkeypatch):
     monkeypatch.setattr(inspector, "database_type", "qcodes")
     monkeypatch.setattr(inspector, "qcodes_database_path", db_path)
     monkeypatch.setattr(run_view, "_default_settings", lambda: {
-        "plot_font_size": 12, "show_gridlines": True,
+        "plot_font_size": 15, "show_gridlines": True,
         "plot_dict_1D": load_template("1d_plot.json"),
         "plot_dict_2D": load_template("2d_plot.json"),
     })
