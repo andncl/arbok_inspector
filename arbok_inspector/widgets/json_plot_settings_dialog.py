@@ -4,10 +4,9 @@ Dialog for editing JSON plot settings.
 import copy
 import json
 import importlib.resources as resources
+from typing import Callable, MutableMapping
 
 from nicegui import app, ui
-
-from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
 
 JSE_DARK_CSS = '''
 .jse-theme-dark {
@@ -29,18 +28,38 @@ JSE_DARK_CSS = '''
 }
 '''
 
+def data_section_first(plot_dict: dict) -> dict:
+    """Same dict with the (most edited) 'data' section as the first key."""
+    if not isinstance(plot_dict, dict) or 'data' not in plot_dict:
+        return plot_dict
+    return {'data': plot_dict['data'],
+            **{key: value for key, value in plot_dict.items() if key != 'data'}}
+
+
 class JsonPlotSettingsDialog:
     """
     Dialog for editing JSON plot settings.
     """
-    def __init__(self, dimension: str, storage: str = 'tab'):
+    def __init__(
+            self, dimension: str,
+            storage: str | MutableMapping = 'general',
+            on_apply: Callable[[], None] | None = None):
+        """
+        Args:
+            dimension: Settings key, 'plot_dict_1D' or 'plot_dict_2D'
+            storage: Name of an `app.storage` attribute or a settings mapping
+            on_apply: Called after settings were applied or reset
+        """
         self.dimension = dimension
         self.storage = storage
+        self.on_apply = on_apply
         self.json_editor = None
         self.dialog = self.build_plot_settings_dialog()
 
-    def _get_storage(self):
-        return getattr(app.storage, self.storage)
+    def _get_storage(self) -> MutableMapping:
+        if isinstance(self.storage, str):
+            return getattr(app.storage, self.storage)
+        return self.storage
 
     def build_plot_settings_dialog(self):
         """
@@ -91,7 +110,7 @@ class JsonPlotSettingsDialog:
             data = copy.deepcopy(storage[fig_key])
         else:
             data = copy.deepcopy(storage[self.dimension])
-        self.json_editor.properties['content']['json'] = data
+        self.json_editor.properties['content']['json'] = data_section_first(data)
         self.json_editor.update()
 
     async def set_editor_data(self):
@@ -106,8 +125,8 @@ class JsonPlotSettingsDialog:
         if fig_key:
             self._get_storage()[fig_key] = copy.deepcopy(json_data)
         ui.notify('Settings applied', type='positive', position='top-right')
-        if self.storage == 'tab':
-            build_xarray_grid()
+        if self.on_apply is not None:
+            self.on_apply()
 
     def reset_plot_settings(self):
         """Reset plot settings to defaults."""
@@ -118,5 +137,5 @@ class JsonPlotSettingsDialog:
             with resources.files("arbok_inspector.configurations").joinpath("2d_plot.json").open("r") as f:
                 self._get_storage()["plot_dict_2D"] = json.load(f)
         ui.notify('Reset to default settings', type='positive', position='top-right')
-        if self.storage == 'tab':
-            build_xarray_grid()
+        if self.on_apply is not None:
+            self.on_apply()

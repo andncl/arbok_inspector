@@ -7,7 +7,7 @@ from functools import wraps
 from pathlib import Path
 import sqlite3
 
-from nicegui import app, ui
+from nicegui import ui
 from qcodes.dataset import load_by_id
 from qcodes.dataset.sqlite.database import get_DB_location
 from qcodes import config as qc_config
@@ -40,16 +40,18 @@ class QcodesRun(BaseRun):
     """"""
     def __init__(
         self,
-        run_id: int
+        run_id: int,
+        db_path: str | Path | None = None,
     ):
         """
         Constructor for QcodesRun class
-        
+
         Args:
             run_id (int): Run ID of the measurement run
+            db_path: QCoDeS database file, defaults to the connected database
         """
         super().__init__(run_id, inspector)
-        self.db_path = app.storage.tab["qcodes_db_path"]
+        self.db_path = db_path or inspector.qcodes_database_path
 
     @with_sqlite_connection
     def _load_dataset(self, conn) -> Dataset:

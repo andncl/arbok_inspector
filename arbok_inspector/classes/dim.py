@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 
-AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis', 'fft']
+AXIS_OPTIONS = ['average', 'select_value', 'y-axis', 'x-axis', 'fft', 'decay']
 
 
 class Dim:

@@ -1,8 +1,5 @@
-from .build_run_view_actions import (
-    build_run_view_actions,
-    build_xarray_grid
-)
-from .build_xarray_grid import build_xarray_grid
+from .build_run_view_actions import build_run_view_actions
+from .build_xarray_grid import PlotGrid, request_plot_update
 from .build_xarray_html import build_xarray_html
 from .day_selector import (
     build_day_selector,
