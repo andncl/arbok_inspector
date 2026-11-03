@@ -4,15 +4,14 @@ Build and display xarray dataset HTML with dark theme.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from nicegui import ui, app
+from nicegui import ui
 
 if TYPE_CHECKING:
-    from arbok_inspector.arbok_inspector.classes.base_run import BaseRun
+    from arbok_inspector.classes.base_run import BaseRun
     from xarray import Dataset
 
-def build_xarray_html():
+def build_xarray_html(run: BaseRun):
     """Display the xarray dataset in a dark-themed style."""
-    run: BaseRun = app.storage.tab["run"]
     ds: Dataset = run.full_data_set
     with ui.column().classes('w-full'):
         ui.html('''

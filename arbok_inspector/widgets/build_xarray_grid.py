@@ -1,440 +1,211 @@
-"""Module to build a grid of xarray plots for a given run."""
+"""Plot grid of a run view: renders the selected results as Plotly figures."""
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
+import asyncio
+import itertools
+import logging
 import math
-import copy
 from pathlib import Path
-import numpy as np
-import plotly.graph_objects as go
-from matplotlib.ticker import MaxNLocator, LogLocator
-from nicegui import ui, app
 
-from arbok_inspector.helpers.string_formaters import (
-    title_formater, axis_label_formater
+from nicegui import ui
+from nicegui import run as nicegui_run
+
+from arbok_inspector.helpers.figure_builder import (
+    PlotSettings, FigureBundle, build_figures
 )
+from arbok_inspector.helpers.render_scheduler import RenderScheduler
+from arbok_inspector.helpers.string_formaters import title_formater
+from arbok_inspector.run_session import get_session
 
 if TYPE_CHECKING:
     from arbok_inspector.classes.base_run import BaseRun
-    from plotly.graph_objs import Figure
-    from xarray import DataArray
+    from arbok_inspector.classes.view_state import ViewState
+    from arbok_inspector.run_session import RunSession
 
-def build_xarray_grid_hide(has_new_data: bool = False) -> None:
+logger = logging.getLogger(__name__)
+
+SPINNER_DELAY_S = 0.3
+
+
+def compute_figures(
+        run: BaseRun, view: ViewState, settings: PlotSettings) -> FigureBundle:
+    """Heavy part of a render: subset the data and build the figure dicts."""
+    data = run.compute_subset(view)
+    return build_figures(data, view, settings)
+
+
+class PlotGrid:
     """
-    Build a grid of xarray plots for the given run.
+    Plot area of one run-view tab.
 
-    Args:
-        has_new_data (bool): Flag indicating if there is new data to plot.
+    A render is split in two: the heavy part (`compute_figures`) runs in a
+    worker thread, so the event loop shared by all tabs stays responsive; only
+    applying the result to the UI runs on the loop. Renders go through a
+    RenderScheduler — one at a time, the latest request wins — and existing
+    plots are updated in place while the grid layout stays the same.
     """
-    print("\nBuilding xarray grid of plots")
-    run = app.storage.tab["run"]
-    container = app.storage.tab["placeholders"]['plots']
-    container.clear()
-    if run.dim_axis_option['x-axis'] is None:
-        ui.notify(
-            'Please select at least one dimension for the x-axis to display plots.<br>',
-            color = 'red')
-        return
-    if run.show_histogram:
-        ds = run.generate_binned_subset(has_new_data=has_new_data)
-    else:
-        ds = run.generate_subset(has_new_data=has_new_data)
-    results_1d = {}
-    results_2d = {}
-    results_unshowable = {}
-    for result_name in run.plot_selection:
-        result = ds[result_name]
-        if len(result.dims) == 1:
-            if run.show_histogram:
-                results_2d[result_name] = result
-            else:
-                results_1d[result_name] = result
-        elif len(result.dims) == 2:
-            results_2d[result_name] = result
-        else:
-            results_unshowable[result_name] = result
 
-    figures: list = create_1d_plot(run, results_1d)
-    figures += create_2d_plots(run, results_2d)
-    create_figures_ui_grid(figures, container, run)
+    def __init__(
+            self, session: RunSession,
+            on_reloaded: Callable[[], None] | None = None):
+        """
+        Args:
+            session: Session of the tab this grid belongs to
+            on_reloaded: Called on the event loop after the dataset was reloaded
+        """
+        self.session = session
+        self.on_reloaded = on_reloaded
+        self._plots: list[ui.plotly] = []
+        self._layout_key: tuple[int, int] | None = None
+        self._scheduler = RenderScheduler(self._render)
+        with ui.element('div').classes('relative w-full') as self._root:
+            self._area = ui.row().classes('w-full min-h-[50vh] p-1 items-stretch')
+            self._spinner = ui.spinner('dots', size='lg', color='purple')\
+                .classes('absolute top-2 right-2 z-10')
+            self._spinner.visible = False
 
-def build_xarray_grid(has_new_data: bool = False) -> None:
-    """
-    Build a grid of xarray plots for the given run.
-    Shows a loading dialog (deferred via timer) only when heavy computation
-    is needed (new data, histogram, or FFT recalculation).
+    @property
+    def busy(self) -> bool:
+        """True while a render is running or queued."""
+        return self._scheduler.busy
 
-    Args:
-        has_new_data (bool): Flag indicating if there is new data to plot.
-    """
-    print("\nBuilding xarray grid of plots")
-    run = app.storage.tab["run"]
-    container = app.storage.tab["placeholders"]['plots']
-    container.clear()
-    if (run.dim_axis_option['x-axis'] is None
-            and not run.show_histogram
-            and not run.show_fft):
-        ui.notify(
-            'Please select at least one dimension for the x-axis to display plots.<br>',
-            color='red')
-        return
+    def request(self, reload: bool = False) -> None:
+        """Request a render without waiting for it (see RenderScheduler)."""
+        self._scheduler.request(reload)
 
-    heavy = has_new_data or run.show_histogram or run.show_fft
+    async def refresh(self, reload: bool = False) -> None:
+        """Request a render and wait until the plots are up to date."""
+        self.request(reload)
+        await self._scheduler.wait_idle()
 
-    if heavy:
-        loading = ui.dialog().props('persistent')
-        with loading, ui.card().classes('items-center'):
-            ui.spinner('dots', size='xl', color='purple')
-            ui.label('Calculating...').classes('text-sm')
-        loading.open()
+    async def wait_idle(self) -> None:
+        """Wait until all requested renders have finished."""
+        await self._scheduler.wait_idle()
 
-        def _compute():
-            try:
-                _build_plots(run, container, has_new_data)
-            finally:
-                loading.close()
+    def close(self) -> None:
+        """Cancel pending renders, e.g. when the tab is closed."""
+        self._scheduler.close()
 
-        ui.timer(0.1, _compute, once=True)
-    else:
-        _build_plots(run, container, has_new_data)
+    async def _render(self, reload: bool) -> None:
+        if self._root.is_deleted:
+            return
+        show_spinner = asyncio.get_running_loop().call_later(
+            SPINNER_DELAY_S, self._set_spinner, True)
+        try:
+            with self._root:
+                await self._render_in_context(reload)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.exception("Plot render failed")
+            if not self._root.is_deleted:
+                with self._root:
+                    ui.notify(f'Error while plotting: {e}', type='negative')
+        finally:
+            show_spinner.cancel()
+            self._set_spinner(False)
 
-
-def _build_plots(run, container, has_new_data: bool) -> None:
-    """Core plot-building logic."""
-    figures = []
-    results_same_trace = {}
-    for result_name in run.plot_selection:
-        if run.show_fft:
-            ds = run.generate_fft_subset(has_new_data=has_new_data)
-        elif run.show_histogram:
-            ds = run.generate_binned_subset(has_new_data=has_new_data)
-        else:
-            ds = run.generate_subset_dict(has_new_data=has_new_data)
-        result = ds[result_name]
-        if len(result.dims) == 1:
-            if run.show_histogram:
-                name_short = result_name.split('__')[0]
-                if name_short.endswith('diff') or name_short.endswith('state'):
-                    figure = create_1d_plot(run, {result_name: result})[0]
-                    figures.append(figure)
-                else:
-                    results_same_trace[result_name] = result
-            else:
-                results_same_trace[result_name] = result
-        elif len(result.dims) == 2:
-            figure = create_2d_figure(result_name, result, run)
-            figures.append(figure)
-    if results_same_trace:
-        figures += create_1d_plot(run, results_same_trace)
-    create_figures_ui_grid(figures, container, run)
-
-def _strip_data(plot_dict: dict) -> dict:
-    """Return a copy of the plot dict with large data arrays removed."""
-    stripped = copy.deepcopy(plot_dict)
-    for trace in stripped.get("data", []):
-        for key in ("x", "y", "z", "customdata"):
-            trace.pop(key, None)
-    return stripped
-
-
-def create_1d_plot(run: BaseRun, results_dict: dict[str, DataArray]) -> Figure:
-    """
-    Creates plotly figure with all 1D traces in it.
-
-    Args:
-        run (RunBase): Run that data is taken from
-        results_dict (dict): Dict with result names as keys and xarray DataArrays
-            as keys
-
-    Returns:
-        plotly figure
-    """
-    print("Creating 1D plot")
-    if run.show_fft and not run.dim_axis_option['x-axis']:
-        x_dim = None  # will use the single dim from each result
-    elif run.dim_axis_option['x-axis']:
-        x_dim = run.dim_axis_option['x-axis'].name
-    else:
-        x_dim = 'Current'
-    traces = []
-    plot_dict = copy.deepcopy(app.storage.tab["plot_dict_1D"])
-    trace_template = plot_dict.get("data", [{}])[0] if plot_dict.get("data") else {}
-    for result_name, result in results_dict.items():
-        effective_x = x_dim if x_dim else result.dims[0]
-        if effective_x in result.coords:
-            trace = {
-                "type": "scatter",
-                "mode": trace_template.get("mode", "lines+markers"),
-                "name": result_name.replace("__", "."),
-                "x": result.coords[effective_x].values.tolist(),
-                "y": result.values.tolist(),
-            }
-            if "marker" in trace_template:
-                trace["marker"] = copy.deepcopy(trace_template["marker"])
-            traces.append(trace)
-            plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(
-                result, effective_x)
-
-        else:
+    async def _render_in_context(self, reload: bool) -> None:
+        run = self.session.run
+        if reload:
+            await nicegui_run.io_bound(run.reload_dataset)
+            if self._root.is_deleted:
+                return
+            if self.on_reloaded is not None:
+                self.on_reloaded()
+        view = run.snapshot_view()
+        if (view.x_dim is None and not view.show_histogram
+                and view.fft_dim is None and view.decay_dim is None):
+            self._clear()
             ui.notify(
-                f"Result {result_name} does not have coordinates for {effective_x}",
-                type = "negative"
-            )
-    plot_dict["data"] = traces
-    plot_dict = add_title_to_plot_dict(run, plot_dict, None)
-    apply_font_size(plot_dict)
-    apply_axis_scale(plot_dict)
-    apply_gridlines(plot_dict)
-    if traces:
-        app.storage.tab["last_figure_1d"] = _strip_data(plot_dict)
-        return [go.Figure(plot_dict)]
-    else:
-        return []
+                'Please select at least one dimension for the x-axis to display plots.',
+                color='red')
+            return
+        settings = self._snapshot_settings()
+        bundle = await nicegui_run.io_bound(compute_figures, run, view, settings)
+        if bundle is None or self._root.is_deleted:
+            return  # app is shutting down or tab was closed meanwhile
+        self._apply(bundle)
 
-def create_2d_plots(
-        run: BaseRun, results_dict: dict[str, DataArray]) -> list[Figure]:
-    """
-    Creates a list with all plotly 2D plots from the given data dict
+    def _snapshot_settings(self) -> PlotSettings:
+        """Capture the tab's plot settings and title texts on the event loop."""
+        run = self.session.run
+        settings = self.session.settings
+        title_header = ""
+        if hasattr(run, 'db_path'):
+            title_header = (f"Run ID: {run.run_id} -- "
+                            f"<i>{Path(run.db_path).resolve()}</i><br>")
+        return PlotSettings(
+            plot_dict_1d=settings["plot_dict_1D"],
+            plot_dict_2d=settings["plot_dict_2D"],
+            font_size=settings.get("plot_font_size", 12),
+            log_x=settings.get("log_scale_x", False),
+            log_y=settings.get("log_scale_y", False),
+            log_z=settings.get("log_scale_z", False),
+            show_gridlines=settings.get("show_gridlines", True),
+            title_header=title_header,
+            title_selection=title_formater(run),
+        )
 
-    Args:
-        run (BaseRun): Run object describing measurement
-        results_dict (dict): Dict with result names as keys and xarray
-            DataArrays as values
-    """
-    run = app.storage.tab["run"]
-    figures_2d = []
-    for result_name, result in results_dict.items():
-        figure = create_2d_figure(result_name, result, run)
-        figures_2d.append(figure)
-    return figures_2d
+    def _apply(self, bundle: FigureBundle) -> None:
+        """Show the computed figures, reusing existing plot elements if possible."""
+        for warning in bundle.warnings:
+            ui.notify(warning, type='negative')
+        if bundle.last_figure_1d is not None:
+            self.session.settings["last_figure_1d"] = bundle.last_figure_1d
+        if bundle.last_figure_2d is not None:
+            self.session.settings["last_figure_2d"] = bundle.last_figure_2d
+        figures = bundle.figures
+        if not figures:
+            self._clear()
+            with self._area:
+                ui.label('No plottable results selected').classes('text-gray-400')
+            return
+        layout_key = (len(figures), max(1, self.session.run.plots_per_column))
+        if layout_key == self._layout_key and not any(p.is_deleted for p in self._plots):
+            for plot, figure in zip(self._plots, figures):
+                plot.update_figure(figure)
+            return
+        self._build_grid(figures, num_columns=min(layout_key[1], len(figures)))
+        self._layout_key = layout_key
 
-def create_2d_figure(
-        result_name: str, result: DataArray, run: BaseRun) -> Figure:
-    """
-    Creates single 2D plotly figure for the given result
-
-    Args:
-        result_name (str): Name of result
-        result (DataArray): xarray DataArray to display
-        run (BaseRun): Run object of measurement
-    """
-    print("Creating 2D plot for result:", result_name)
-    x_dim = run.dim_axis_option['x-axis'].name if run.dim_axis_option['x-axis'] else result.dims[1]
-    if run.dim_axis_option['y-axis']:
-        y_dim = run.dim_axis_option['y-axis'].name
-    else:
-        y_dim = next((d for d in result.dims if d != x_dim), result.dims[0])
-    plot_dict = copy.deepcopy(app.storage.tab["plot_dict_2D"])
-    plot_dict["layout"]["xaxis"]["title"]["text"] = axis_label_formater(
-        result, x_dim)
-    plot_dict["layout"]["yaxis"]["title"]["text"] = axis_label_formater(
-        result, y_dim)
-    plot_dict["layout"]["yaxis"]["automargin"] = True
-    plot_dict["layout"]["xaxis"]["automargin"] = True
-    if result[x_dim].dims[0] != result.dims[1]:
-        result = result.transpose()
-    plot_dict["data"][0]["z"] = result.values.tolist()
-    plot_dict["data"][0]["x"] = result.coords[x_dim].values.tolist()
-    plot_dict["data"][0]["y"] = result.coords[y_dim].values.tolist()
-    title = result_name.replace("__", ".")
-    plot_dict = add_title_to_plot_dict(run, plot_dict, title)
-    apply_font_size(plot_dict)
-    apply_axis_scale(plot_dict)
-    apply_colorscale_log(plot_dict)
-    app.storage.tab["last_figure_2d"] = _strip_data(plot_dict)
-    x_data = result.coords[x_dim].values.tolist()
-    y_data = result.coords[y_dim].values.tolist()
-    show_grid = app.storage.tab.get("show_gridlines", True)
-    if show_grid:
-        _set_heatmap_tickvals(plot_dict, x_data, y_data)
-    fig = go.Figure(plot_dict)
-    if show_grid:
-        _add_heatmap_gridline_shapes(fig, x_data, y_data)
-    return fig
-
-def create_figures_ui_grid(figures: list[Figure], container, run: BaseRun) -> None:
-    """
-    Generates a grid of plotly figures in the given ui container
-
-    Args:
-        figures (list): List of plotly figures to display
-        container: UI container to display figures in
-        run (BaseRun): Run object for measurement
-    """
-    num_plots = len(figures)
-    print(num_plots, "plots to display")
-    print(run.plots_per_column, "plots per column")
-    num_columns = int(min([run.plots_per_column, len(figures)]))
-    num_rows = math.ceil(num_plots / num_columns)
-    plot_idx = 0
-    with container:
-        with ui.column().classes('w-full h-full'):
-            for row in range(num_rows):
+    def _build_grid(self, figures: list[dict], num_columns: int) -> None:
+        """Create a grid of plotly elements, `num_columns` per row."""
+        self._clear()
+        num_rows = math.ceil(len(figures) / num_columns)
+        width_percent = 100 / num_columns - 2
+        height_percent = 100 / num_rows - 2
+        remaining = iter(figures)
+        with self._area, ui.column().classes('w-full h-full'):
+            for _ in range(num_rows):
                 with ui.row().classes('w-full justify-start flex-wrap'):
-                    for col in range(num_columns):
-                        if plot_idx >= num_plots:
-                            break
-                        width_percent = 100 / num_columns - 2
-                        height_percent = 100 / num_rows - 2
+                    for figure in itertools.islice(remaining, num_columns):
                         with ui.column().style(
-                            f"width: {width_percent}%; box-sizing: border-box;"
-                            f"height: {height_percent}%; box-sizing: border-box;"
-                            ):
-                            ui.plotly(figures[plot_idx])\
-                                .classes('w-full h-full')\
+                                f"width: {width_percent}%; box-sizing: border-box;"
+                                f"height: {height_percent}%; box-sizing: border-box;"):
+                            plot = ui.plotly(figure).classes('w-full h-full')\
                                 .style(f'min-height: {int(800/num_rows)}px;')
-                        plot_idx += 1
+                            self._plots.append(plot)
 
-def apply_font_size(plot_dict: dict) -> None:
-    """Apply the user-configured font size to axis labels, ticks, and legend."""
-    size = app.storage.tab.get("plot_font_size", 12)
-    layout = plot_dict["layout"]
-    for axis_key in ("xaxis", "yaxis"):
-        if axis_key in layout:
-            layout[axis_key].setdefault("title", {}).setdefault("font", {})["size"] = size
-            layout[axis_key].setdefault("tickfont", {})["size"] = size
-    if "legend" in layout:
-        layout["legend"].setdefault("font", {})["size"] = size
-    for trace in plot_dict.get("data", []):
-        if "colorbar" in trace:
-            trace["colorbar"].setdefault("tickfont", {})["size"] = size
-            trace["colorbar"].setdefault("title", {}).setdefault("font", {})["size"] = size
+    def _clear(self) -> None:
+        self._area.clear()
+        self._plots = []
+        self._layout_key = None
 
-def apply_axis_scale(plot_dict: dict) -> None:
-    """Apply log/linear scale to axes based on user toggle."""
-    layout = plot_dict["layout"]
-    for axis_key, storage_key in (("xaxis", "log_scale_x"), ("yaxis", "log_scale_y")):
-        if axis_key in layout:
-            log_on = app.storage.tab.get(storage_key, False)
-            layout[axis_key]["type"] = "log" if log_on else "linear"
-
-def apply_colorscale_log(plot_dict: dict) -> None:
-    """Apply logarithmic color mapping while preserving original z values on hover."""
-    if not app.storage.tab.get("log_scale_z", False):
-        return
-    for trace in plot_dict.get("data", []):
-        if "z" not in trace:
-            continue
-        z = np.array(trace["z"], dtype=float)
-        z_pos = z[z > 0]
-        if z_pos.size == 0:
-            continue
-        z_log = np.where(z > 0, np.log10(z), np.nan)
-        trace["customdata"] = z.tolist()
-        trace["z"] = z_log.tolist()
-        trace["hovertemplate"] = "x: %{x}<br>y: %{y}<br>z: %{customdata:.4g}<extra></extra>"
-        zmin, zmax = np.nanmin(z_log), np.nanmax(z_log)
-        trace["zmin"] = float(zmin)
-        trace["zmax"] = float(zmax)
-        tick_exponents = np.arange(math.floor(zmin), math.ceil(zmax) + 1)
-        if "colorbar" not in trace:
-            trace["colorbar"] = {}
-        trace["colorbar"]["tickvals"] = tick_exponents.tolist()
-        trace["colorbar"]["ticktext"] = [
-            f"10<sup>{int(e)}</sup>" for e in tick_exponents]
+    def _set_spinner(self, visible: bool) -> None:
+        if not self._spinner.is_deleted:
+            self._spinner.set_visibility(visible)
 
 
-def apply_gridlines(plot_dict: dict) -> None:
-    """Toggle gridlines on axes and clamp log range when data contains 0."""
-    show = app.storage.tab.get("show_gridlines", False)
-    layout = plot_dict["layout"]
-    data_key = {"xaxis": "x", "yaxis": "y"}
-    for axis_key in ("xaxis", "yaxis"):
-        if axis_key not in layout:
-            continue
-        layout[axis_key]["showgrid"] = show
-        if layout[axis_key].get("type") != "log":
-            continue
-        all_vals = []
-        for trace in plot_dict.get("data", []):
-            vals = trace.get(data_key[axis_key])
-            if vals:
-                all_vals.extend(vals)
-        if 0 not in all_vals:
-            continue
-        positives = [v for v in all_vals if v > 0]
-        if positives:
-            layout[axis_key]["range"] = [
-                math.log10(min(positives)), math.log10(max(positives))]
-
-
-def _pixel_half_width(data: list) -> float:
-    """Half the spacing between the first two data points (heatmap pixel width)."""
-    if len(data) < 2:
-        return 0
-    return abs(data[1] - data[0]) / 2
-
-
-def _compute_heatmap_ticks(data: list, log: bool = False) -> list:
-    """Compute nice tick positions for a heatmap axis from its data values."""
-    if len(data) < 2:
-        return list(data)
-    lo, hi = min(data), max(data)
-    if log and lo == 0:
-        positives = [v for v in data if v > 0]
-        lo = min(positives) if positives else hi
-    if log and lo > 0:
-        locator = LogLocator(base=10, subs=[1, 2, 5], numticks=12)
-    else:
-        locator = MaxNLocator(nbins='auto', steps=[1, 2, 2.5, 5, 10])
-    return [t for t in locator.tick_values(lo, hi) if lo <= t <= hi]
-
-
-def _set_heatmap_tickvals(
-        plot_dict: dict, x_data: list, y_data: list) -> None:
-    """Set explicit tickvals on both axes so labels match the gridlines."""
-    layout = plot_dict["layout"]
-    log_x = app.storage.tab.get("log_scale_x", False)
-    log_y = app.storage.tab.get("log_scale_y", False)
-    layout["xaxis"]["tickvals"] = _compute_heatmap_ticks(x_data, log=log_x)
-    layout["yaxis"]["tickvals"] = _compute_heatmap_ticks(y_data, log=log_y)
-
-
-def _add_heatmap_gridline_shapes(
-        fig: Figure, x_data: list, y_data: list) -> None:
-    """Draw gridline shapes on top of a heatmap at the tick positions."""
-    line_style = {"color": "rgba(255,255,255,0.3)", "width": 1}
-    x_hw = _pixel_half_width(x_data)
-    y_hw = _pixel_half_width(y_data)
-    x_lo, x_hi = min(x_data) - x_hw, max(x_data) + x_hw
-    y_lo, y_hi = min(y_data) - y_hw, max(y_data) + y_hw
-    log_x = app.storage.tab.get("log_scale_x", False)
-    log_y = app.storage.tab.get("log_scale_y", False)
-    for t in _compute_heatmap_ticks(x_data, log=log_x):
-        fig.add_shape(
-            type="line", xref="x", yref="y",
-            x0=t, x1=t, y0=y_lo, y1=y_hi, line=line_style)
-    for t in _compute_heatmap_ticks(y_data, log=log_y):
-        fig.add_shape(
-            type="line", xref="x", yref="y",
-            x0=x_lo, x1=x_hi, y0=t, y1=t, line=line_style)
-
-def add_title_to_plot_dict(run: BaseRun, plot_dict: dict, result_name: str) -> dict:
+def request_plot_update(reload: bool = False) -> None:
     """
-    Generate a title string for the plots based on selected dimensions.
+    Request a re-render of the current tab's plots. Returns immediately;
+    bursts of requests are coalesced into one render with the latest state.
 
     Args:
-        run: The Run object containing the data.
-        plot_dict: The plotly figure dictionary to update.
-        result_name: The name of the result being plotted.
-    Returns:
-        dict: The updated plotly figure dictionary with the title.
+        reload: Whether to reload the dataset from the database first.
     """
-    title_font_size = 10
-    run = app.storage.tab["run"]
-    if hasattr(run, 'db_path') and hasattr(run, 'run_id'):
-        db_path = Path(run.db_path).resolve()
-        title_string = f"Run ID: {run.run_id} -- <i>{db_path}</i><br>"
-    else:
-        title_string = ""
-    if result_name is not None:
-        title_string += f"<b>{result_name}</b><br>"
-    title_string += f"{title_formater(run)}"
-    num_lines = title_string.count("<br>") + 1
-    plot_dict["layout"].setdefault("margin", {})
-    plot_dict["layout"]["title"]["y"] = 0.97
-    plot_dict["layout"]["title"]["yanchor"] = "top"
-    plot_dict["layout"]["title"]["font"]["size"] = title_font_size
-    plot_dict["layout"]["title"]["text"] = title_string
-    plot_dict["layout"]["margin"]["t"] = num_lines * 1.3*title_font_size
-    return plot_dict
+    session = get_session()
+    if session is None or session.plot_grid is None:
+        ui.notify('Session expired — please reload the page.', type='warning')
+        return
+    session.plot_grid.request(reload)

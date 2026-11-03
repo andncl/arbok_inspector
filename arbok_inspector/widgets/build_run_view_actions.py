@@ -1,26 +1,26 @@
 """Module containing function to build run-view options"""
 from __future__ import annotations
 from typing import TYPE_CHECKING
-import asyncio
 from io import BytesIO
 
 import xarray as xr
 
-from nicegui import app, ui
+from nicegui import ui
 from nicegui import run as nicegui_run
 
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.widgets.json_plot_settings_dialog import (
     JsonPlotSettingsDialog)
-from arbok_inspector.widgets.build_xarray_grid import build_xarray_grid
+from arbok_inspector.widgets.build_xarray_grid import request_plot_update
 
 if TYPE_CHECKING:
-    from arbok_inspector.classes.base_run import BaseRun
+    from arbok_inspector.run_session import RunSession
 
 DEFAULT_REFRESH_INTERVAL_S = 2
 
-def build_run_view_actions() -> None:
+def build_run_view_actions(session: RunSession) -> None:
     """Build the run view action buttons and controls."""
+    settings = session.settings
     with ui.column().classes('w-full items-stretch gap-2'):
         # Row 1: Update + Debug
         with ui.row().classes('w-full gap-1 flex-nowrap'):
@@ -28,16 +28,19 @@ def build_run_view_actions() -> None:
                 'Update',
                 icon='refresh',
                 color='green',
-                on_click=reload_dataset_and_refresh_plots
+                on_click=lambda: reload_dataset_and_refresh_plots(session)
                 ).props('dense size=sm').classes('flex-1 min-w-0')
             ui.button(
-                'Debug', icon='info', color='red', on_click=print_debug
+                'Debug', icon='info', color='red',
+                on_click=lambda: print_debug(session)
                 ).props('dense size=sm').classes('flex-1 min-w-0')
 
         # Row 2: Settings buttons
         with ui.row().classes('w-full gap-1 flex-nowrap'):
-            dialog_1d = JsonPlotSettingsDialog('plot_dict_1D')
-            dialog_2d = JsonPlotSettingsDialog('plot_dict_2D')
+            dialog_1d = JsonPlotSettingsDialog(
+                'plot_dict_1D', storage=settings, on_apply=request_plot_update)
+            dialog_2d = JsonPlotSettingsDialog(
+                'plot_dict_2D', storage=settings, on_apply=request_plot_update)
 
             ui.button('1D JSON', color='pink',
                     on_click=dialog_1d.open).props('dense size=sm')\
@@ -48,9 +51,12 @@ def build_run_view_actions() -> None:
 
         # Row 3: Timer controls
         with ui.row().classes('w-full items-center gap-1 flex-nowrap'):
+            async def auto_reload() -> None:
+                # Awaiting the render keeps timer ticks from overlapping
+                await reload_dataset_and_refresh_plots(session, notify=False)
             timer = ui.timer(
                 interval=DEFAULT_REFRESH_INTERVAL_S,
-                callback=reload_dataset_and_refresh_plots,
+                callback=auto_reload,
                 active=False
                 )
             ui.label('Reload').classes('text-xs')
@@ -68,39 +74,31 @@ def build_run_view_actions() -> None:
         with ui.row().classes('w-full gap-1 flex-nowrap'):
             ui.number(
                 label='# col',
-                value=2,
+                value=session.run.plots_per_column,
+                min=1,
                 format='%.0f',
-                on_change=lambda e: set_plots_per_column(e.value),
+                on_change=lambda e: set_plots_per_column(session, e.value),
             ).props('dense outlined').classes('flex-1 min-w-0 text-xs')
 
             ui.number(
                 label='Font',
-                value=app.storage.tab.get("plot_font_size", 12),
+                value=settings.get("plot_font_size", 12),
                 min=4,
                 max=40,
                 step=1,
                 format='%.0f',
-                on_change=lambda e: set_plot_font_size(e.value),
+                on_change=lambda e: set_plot_font_size(session, e.value),
             ).props('dense outlined').classes('flex-1 min-w-0 text-xs')
 
         # --- Row 5: Log scale toggles ---
         with ui.row().classes('w-full gap-1 items-center flex-nowrap'):
             ui.label('Log:').classes('text-xs')
-            ui.switch(
-                'X',
-                value=app.storage.tab.get("log_scale_x", False),
-                on_change=lambda e: set_log_scale('x', e.value),
-            ).props('dense')
-            ui.switch(
-                'Y',
-                value=app.storage.tab.get("log_scale_y", False),
-                on_change=lambda e: set_log_scale('y', e.value),
-            ).props('dense')
-            ui.switch(
-                'Z',
-                value=app.storage.tab.get("log_scale_z", False),
-                on_change=lambda e: set_log_scale('z', e.value),
-            ).props('dense')
+            for axis in ('x', 'y', 'z'):
+                ui.switch(
+                    axis.upper(),
+                    value=settings.get(f"log_scale_{axis}", False),
+                    on_change=lambda e, a=axis: set_log_scale(session, a, e.value),
+                ).props('dense')
 
         # --- Row 6: Download buttons gridline toggle ---
         with ui.row().classes('w-full gap-1 flex-nowrap'):
@@ -108,20 +106,20 @@ def build_run_view_actions() -> None:
                 'Full',
                 icon='file_download',
                 color='blue',
-                on_click=download_full_dataset
+                on_click=lambda: download_full_dataset(session)
                 ).props('dense size=sm').classes('flex-1 min-w-0')
             ui.button(
                 'Selec.',
                 icon='file_download',
                 color='darkblue',
-                on_click=download_data_selection
+                on_click=lambda: download_data_selection(session)
                 ).props('dense size=sm').classes('flex-1 min-w-0')
         # --- Row 7b :gridline toggle ---
         with ui.row().classes('w-full gap-1 flex-nowrap'):
             ui.label('Grid:').classes('text-xs')
             ui.switch(
-                value=app.storage.tab.get("show_gridlines", True),
-                on_change=lambda e: toggle_gridlines(e.value),
+                value=settings.get("show_gridlines", True),
+                on_change=lambda e: toggle_gridlines(session, e.value),
             ).props('dense')
 
 def on_interval_change(e, timer):
@@ -133,59 +131,67 @@ def on_interval_change(e, timer):
             return
         timer.interval = value
         ui.notify(f'Refresh interval set to {value:.2f} s', color='green')
-    except ValueError:
+    except (TypeError, ValueError):
         ui.notify('Please enter a valid number', color='red')
         e.sender.value = timer.interval  # revert
 
-def set_plot_font_size(value: float):
+def set_plot_font_size(session: RunSession, value: float):
     """Set the font size for plot axes and ticks, then rebuild plots."""
+    if value is None:
+        return
     size = int(value)
-    app.storage.tab["plot_font_size"] = size
+    session.settings["plot_font_size"] = size
     ui.notify(f'Font size set to {size}', position='top-right')
-    build_xarray_grid()
+    request_plot_update()
 
-def toggle_gridlines(value: bool):
+def toggle_gridlines(session: RunSession, value: bool):
     """Toggle gridlines on/off for all plots, then rebuild."""
-    app.storage.tab["show_gridlines"] = value
+    session.settings["show_gridlines"] = value
     ui.notify(f'Gridlines {"on" if value else "off"}', position='top-right')
-    build_xarray_grid()
+    request_plot_update()
 
-def set_log_scale(axis: str, value: bool):
+def set_log_scale(session: RunSession, axis: str, value: bool):
     """Toggle log/linear scale for the given axis, then rebuild plots."""
-    app.storage.tab[f"log_scale_{axis}"] = value
+    session.settings[f"log_scale_{axis}"] = value
     scale = "log" if value else "linear"
     ui.notify(f'{axis.upper()}-axis scale set to {scale}', position='top-right')
-    build_xarray_grid()
+    request_plot_update()
 
-def set_plots_per_column(value: int):
+def set_plots_per_column(session: RunSession, value: int):
     """
     Set the number of plots to display per column.
 
     Args:
+        session: Session of the current tab
         value (int): The number of plots per column
     """
-    run = app.storage.tab["run"]
-    ui.notify(f'Setting plots per column to {value}', position='top-right')
-    run.plots_per_column = int(value)
-    build_xarray_grid()
+    if value is None or int(value) < 1:
+        return
+    ui.notify(f'Setting plots per column to {int(value)}', position='top-right')
+    session.run.plots_per_column = int(value)
+    request_plot_update()
 
-def download_full_dataset():
+async def download_full_dataset(session: RunSession):
     """Download the full dataset as a NetCDF file."""
-    run = app.storage.tab["run"]
-    netcfd_bytes = dataset_to_netcdf_bytes(run.full_data_set)
-    ui.download(netcfd_bytes.getvalue(), f"{run.run_id}.nc")
+    run = session.run
+    netcdf_bytes = await nicegui_run.io_bound(
+        dataset_to_netcdf_bytes, run.full_data_set)
+    ui.download(netcdf_bytes.getvalue(), f"{run.run_id}.nc")
 
-def download_data_selection():
-    """Download the current data selection as a NetCDF file."""
-    run = app.storage.tab["run"]
-    netcfd_bytes = dataset_to_netcdf_bytes(run.last_avg_subset)
-    ui.download(netcfd_bytes.getvalue(), f"{run.run_id}_selection.nc")
+async def download_data_selection(session: RunSession):
+    """Download the currently plotted data selection as a NetCDF file."""
+    run = session.run
+    if not run.last_subset:
+        ui.notify('Nothing plotted yet', type='warning')
+        return
+    netcdf_bytes = await nicegui_run.io_bound(
+        dataset_to_netcdf_bytes, xr.Dataset(run.last_subset))
+    ui.download(netcdf_bytes.getvalue(), f"{run.run_id}_selection.nc")
 
-def print_debug(run: BaseRun):
+def print_debug(session: RunSession):
     """Print debugging information about the current run."""
     print("\nDebugging BaseRun:")
-    run = app.storage.tab["run"]
-    for key, val in run.dim_axis_option.items():
+    for key, val in session.run.dim_axis_option.items():
         if isinstance(val, list):
             val_str = str([d.name for d in val])
         elif isinstance(val, Dim):
@@ -194,17 +200,14 @@ def print_debug(run: BaseRun):
             val_str = str(val)
         print(f"{key}: \t {val_str}")
 
-refresh_lock = asyncio.Lock()
-
-async def reload_dataset_and_refresh_plots() -> None:
-    """Reload the dataset and refresh the plots."""
-    if refresh_lock.locked():
+async def reload_dataset_and_refresh_plots(
+        session: RunSession, notify: bool = True) -> None:
+    """Reload the dataset and refresh the plots of this tab."""
+    if session.plot_grid is None:
         return
-    async with refresh_lock:
-        run: BaseRun = app.storage.tab["run"]
-        run.full_data_set = await nicegui_run.io_bound(run._load_dataset)
+    await session.plot_grid.refresh(reload=True)
+    if notify:
         ui.notify("Dataset reloaded", color='green')
-        build_xarray_grid(has_new_data=True)
 
 def dataset_to_netcdf_bytes(ds: xr.Dataset) -> BytesIO:
     """
