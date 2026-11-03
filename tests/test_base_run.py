@@ -1,6 +1,7 @@
 """Tests for BaseRun dimension assignment, selection fallbacks, and subsetting."""
 import numpy as np
 import pytest
+import xarray as xr
 
 from arbok_inspector.classes.dim import Dim
 from tests.conftest import ConcreteRun, make_dataset_3d, make_dataset_2d, make_dataset_4d
@@ -246,13 +247,6 @@ class TestGenerateSubset:
             assert np.array_equal(
                 subset1[key].values, subset2[key].values)
 
-    def test_slider_callback_fires_on_new_avg(self, run_4d):
-        """update_select_sliders callback fires when averaging changes."""
-        slider_updates = []
-        run_4d.set_on_sliders_need_update(lambda: slider_updates.append(True))
-        run_4d.generate_subset_dict(has_new_data=True)
-        assert len(slider_updates) == 1
-
     def test_select_index_changes_subset(self, run_4d):
         """Changing select_index gives different data slice."""
         subset1 = run_4d.generate_subset_dict(has_new_data=True)
@@ -288,48 +282,197 @@ class TestGenerateSubsetDataset:
             assert set(subset_ds[name].dims) == set(subset_dict[name].dims)
 
 
+@pytest.fixture
+def mean_calls(monkeypatch):
+    """Count DataArray.mean calls, i.e. how often averaging is (re)computed."""
+    calls = []
+    original = xr.DataArray.mean
+
+    def counting_mean(self, *args, **kwargs):
+        calls.append(self.name)
+        return original(self, *args, **kwargs)
+    monkeypatch.setattr(xr.DataArray, "mean", counting_mean)
+    return calls
+
+
+def _count_calls(monkeypatch, name):
+    """Count calls of a function imported into base_run (bin_over_axis, compute_fft)."""
+    import arbok_inspector.classes.base_run as base_run_module
+    calls = []
+    original = getattr(base_run_module, name)
+
+    def counting(*args, **kwargs):
+        calls.append(args)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(base_run_module, name, counting)
+    return calls
+
+
 class TestCacheInvalidation:
     """Test that cache is properly invalidated."""
 
     def test_cache_invalidated_on_process_run_data(self, run_3d):
         """Calling process_run_data clears the cache."""
         run_3d.generate_subset_dict(has_new_data=True)
-        assert run_3d._cached_avg is not None
+        assert run_3d._caches
         run_3d.process_run_data(avg_axis="iteration", result_keywords="")
-        assert run_3d._cached_avg is None
+        assert not run_3d._caches
 
-    def test_has_new_data_bypasses_cache(self, run_3d):
+    def test_has_new_data_bypasses_cache(self, run_3d, mean_calls):
         """has_new_data=True always recomputes even if cache exists."""
-        slider_updates = []
-        run_3d.set_on_sliders_need_update(lambda: slider_updates.append(True))
         run_3d.generate_subset_dict(has_new_data=True)
         run_3d.generate_subset_dict(has_new_data=True)
-        # Slider callback fires both times (cache bypassed)
-        assert len(slider_updates) == 2
+        assert len(mean_calls) == 2 * len(run_3d.full_data_set.data_vars)
 
-    def test_cache_not_recomputed_on_selection_change(self, run_4d):
+    def test_cache_not_recomputed_on_selection_change(self, run_4d, mean_calls):
         """Changing select_index doesn't trigger re-averaging."""
-        slider_updates = []
-        run_4d.set_on_sliders_need_update(lambda: slider_updates.append(True))
         run_4d.generate_subset_dict(has_new_data=True)
-        assert len(slider_updates) == 1
+        assert len(mean_calls) == 1
         rep_dim = run_4d.dim_axis_option['select_value'][0]
         rep_dim.select_index = 1
         run_4d.generate_subset_dict(has_new_data=False)
-        # No additional slider update — cache was reused
-        assert len(slider_updates) == 1
+        assert len(mean_calls) == 1
 
-    def test_cache_recomputed_after_dim_role_change(self, run_4d):
-        """Changing a dim's role invalidates the expected dims, triggering recompute."""
-        slider_updates = []
-        run_4d.set_on_sliders_need_update(lambda: slider_updates.append(True))
+    def test_cache_recomputed_after_dim_role_change(self, run_4d, mean_calls):
+        """Changing the averaged dims triggers a recompute."""
         run_4d.generate_subset_dict(has_new_data=True)
-        # Move rep from select_value to average
         rep_dim = run_4d.dim_axis_option['select_value'][0]
         run_4d.update_subset_dims(rep_dim, 'average')
         run_4d.generate_subset_dict(has_new_data=False)
-        # Cache should be recomputed since expected plot dims changed
-        assert len(slider_updates) == 2
+        assert len(mean_calls) == 2
+
+    def test_cache_kept_when_only_axes_swap(self, run_3d, mean_calls):
+        """Swapping x and y does not change the averaged dims → cache reused."""
+        run_3d.generate_subset_dict()
+        x_dim = run_3d.dim_axis_option['x-axis']
+        run_3d.update_subset_dims(x_dim, 'y-axis')
+        run_3d.generate_subset_dict()
+        assert len(mean_calls) == len(run_3d.full_data_set.data_vars)
+
+    def test_replacing_dataset_invalidates_cache(self, run_3d, mean_calls):
+        """Assigning a new dataset (reload) bumps the data version → recompute."""
+        first = run_3d.generate_subset_dict()["readout__I"]
+        new_ds = run_3d.full_data_set.copy(deep=True)
+        new_ds["readout__I"] += 1.0
+        run_3d.full_data_set = new_ds
+        second = run_3d.generate_subset_dict()["readout__I"]
+        np.testing.assert_allclose(second.values, first.values + 1.0)
+
+    def test_reload_dataset_keeps_dim_roles(self, run_4d):
+        """reload_dataset swaps the data but leaves the user's dim roles intact."""
+        rep_dim = run_4d.dim_axis_option['select_value'][0]
+        rep_dim.select_index = 3
+        version = run_4d._data_version
+        run_4d.reload_dataset()
+        assert run_4d._data_version == version + 1
+        assert run_4d.dim_axis_option['select_value'] == [rep_dim]
+        assert rep_dim.select_index == 3
+
+
+class TestComputeSubset:
+    """compute_subset: the thread-safe entry point used by the plot renderer."""
+
+    def test_only_selected_variables_are_computed(self, run_3d, mean_calls):
+        run_3d.plot_selection = ["readout__I"]
+        subset = run_3d.compute_subset(run_3d.snapshot_view())
+        assert list(subset) == ["readout__I"]
+        assert mean_calls == ["readout__I"]
+
+    def test_adding_a_variable_computes_only_that_one(self, run_3d, mean_calls):
+        run_3d.plot_selection = ["readout__I"]
+        run_3d.compute_subset(run_3d.snapshot_view())
+        run_3d.plot_selection = ["readout__I", "readout__Q"]
+        run_3d.compute_subset(run_3d.snapshot_view())
+        assert mean_calls == ["readout__I", "readout__Q"]
+
+    def test_unknown_variables_are_ignored(self, run_3d):
+        run_3d.plot_selection = ["readout__I", "does_not_exist"]
+        subset = run_3d.compute_subset(run_3d.snapshot_view())
+        assert list(subset) == ["readout__I"]
+
+    def test_matches_generate_subset_dict(self, run_4d):
+        run_4d.dim_axis_option['select_value'][0].select_index = 2
+        expected = run_4d.generate_subset_dict()["result_A"]
+        actual = run_4d.compute_subset(run_4d.snapshot_view())["result_A"]
+        xr.testing.assert_identical(actual, expected)
+
+    def test_sets_last_subset(self, run_3d):
+        subset = run_3d.compute_subset(run_3d.snapshot_view())
+        assert run_3d.last_subset is subset
+
+    def test_view_snapshot_is_isolated_from_later_dim_changes(self, run_4d):
+        """Mutating dims after the snapshot must not affect the computation."""
+        rep_dim = run_4d.dim_axis_option['select_value'][0]
+        view = run_4d.snapshot_view()
+        rep_dim.select_index = 3
+        subset = run_4d.compute_subset(view)["result_A"]
+        expected = run_4d.full_data_set["result_A"].mean("iteration").isel(rep=0)
+        np.testing.assert_allclose(subset.values, expected.values)
+
+    def test_select_index_is_clamped_to_dim_size(self, run_4d):
+        """An out-of-range index (e.g. after a reload) selects the last entry."""
+        run_4d.dim_axis_option['select_value'][0].select_index = 99
+        subset = run_4d.compute_subset(run_4d.snapshot_view())["result_A"]
+        expected = run_4d.full_data_set["result_A"].mean("iteration").isel(rep=-1)
+        np.testing.assert_allclose(subset.values, expected.values)
+
+    def test_parallel_coordinate_name_resolves_to_dim(self):
+        """A select_value dim named after a parallel coordinate selects its dim."""
+        ds = make_dataset_4d().assign_coords(gate=("rep", np.linspace(0, 3, 4)))
+        run = ConcreteRun(ds)
+        run.prepare_run(avg_axis="iteration")
+        run.dim_axis_option['select_value'][0].name = "gate"
+        run.dim_axis_option['select_value'][0].select_index = 1
+        subset = run.compute_subset(run.snapshot_view())["result_A"]
+        assert "rep" not in subset.dims
+
+    def test_histogram_mode_bins_only_selected(self, run_3d, monkeypatch):
+        bin_calls = _count_calls(monkeypatch, "bin_over_axis")
+        run_3d.plot_selection = ["readout__Q"]
+        run_3d.show_histogram = True
+        subset = run_3d.compute_subset(run_3d.snapshot_view())
+        assert "Current" in subset["readout__Q"].dims
+        assert len(bin_calls) == 1
+        run_3d.dim_axis_option['x-axis'].select_index = 0
+        run_3d.compute_subset(run_3d.snapshot_view())
+        assert len(bin_calls) == 1
+
+
+class TestFFTCache:
+    """FFT results are cached; the frequency range only slices the cache."""
+
+    @pytest.fixture
+    def fft_run(self, run_3d):
+        run_3d.update_subset_dims(run_3d.dim_axis_option['average'][0], 'fft')
+        run_3d.plot_selection = ["readout__I"]
+        return run_3d
+
+    def test_freq_range_change_reuses_fft(self, fft_run, monkeypatch):
+        fft_calls = _count_calls(monkeypatch, "compute_fft")
+        fft_run.fft_freq_range = {'min': 0, 'max': 5}
+        full = fft_run.compute_subset(fft_run.snapshot_view())["readout__I"]
+        fft_run.fft_freq_range = {'min': 1, 'max': 3}
+        sliced = fft_run.compute_subset(fft_run.snapshot_view())["readout__I"]
+        assert len(fft_calls) == 1
+        freq_dim = next(d for d in sliced.dims if d.endswith('frequency') and d != 'frequency')
+        assert sliced.sizes[freq_dim] == 3
+        np.testing.assert_allclose(
+            sliced.values, full.isel({freq_dim: slice(1, 4)}).values)
+
+    def test_select_change_reuses_fft(self, fft_run, monkeypatch):
+        fft_calls = _count_calls(monkeypatch, "compute_fft")
+        fft_run.compute_subset(fft_run.snapshot_view())
+        fft_run.update_subset_dims(fft_run.dim_axis_option['y-axis'], 'select_value', 2)
+        fft_run.compute_subset(fft_run.snapshot_view())
+        assert len(fft_calls) == 1
+
+    def test_representation_change_recomputes(self, fft_run, monkeypatch):
+        fft_calls = _count_calls(monkeypatch, "compute_fft")
+        fft_run.compute_subset(fft_run.snapshot_view())
+        fft_run.fft_representation = 'Real'
+        result = fft_run.compute_subset(fft_run.snapshot_view())["readout__I"]
+        assert len(fft_calls) == 2
+        assert (result.values < 0).any()
 
 
 class TestParseKeywords:

@@ -1,4 +1,13 @@
 """Shared test fixtures for arbok_inspector tests."""
+import os
+import tempfile
+
+# NiceGUI's user simulation calls `app.reset()`, which deletes all
+# `storage-*.json` files and the storage directory (default: ./.nicegui).
+# Point NiceGUI at a temporary directory *before* it is imported, so tests
+# never touch real app storage (the general storage file path is fixed at import).
+os.environ["NICEGUI_STORAGE_PATH"] = tempfile.mkdtemp(prefix="arbok-test-nicegui-")
+
 import numpy as np
 import xarray as xr
 import pytest
