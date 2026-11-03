@@ -1,7 +1,8 @@
-"""Data preparation utilities: averaging and histogram binning."""
+"""Data preparation utilities: averaging, histogram binning, FFT and decay spectra."""
 from math import prod
 
 from qcodes.dataset.data_set import load_by_id, DataSet
+from scipy.optimize import nnls
 import xarray as xr
 import numpy as np
 
@@ -165,6 +166,99 @@ def compute_fft(
     return xr.DataArray(output, dims=new_dims, coords=coords)
 
 
+DECAY_TIME_POINTS = 100
+DECAY_REGULARIZATION = 0.0025
+
+
+def compute_decay_spectrum(
+    data: xr.DataArray,
+    dim: str,
+    n_points: int = DECAY_TIME_POINTS,
+    regularization: float = DECAY_REGULARIZATION,
+) -> xr.DataArray:
+    """
+    Decay-time spectrum along one dimension (regularised inverse Laplace transform).
+
+    Each trace f(t) is modelled as  offset + sum_j g_j * exp(-(t - t0) / tau_j)
+    on a log-spaced grid of decay times tau_j and solved for g_j >= 0 with
+    `scipy.optimize.nnls` plus Tikhonov regularisation. The brightest point
+    is the dominant decay time, its value roughly the decay amplitude.
+    Rising traces (f[first] < f[last]) are flipped, so rises and decays from
+    or towards any baseline give the same positive spectrum. Oscillating
+    decays are not representable by real exponentials — use the FFT for those.
+
+    Args:
+        data: Input DataArray
+        dim: Dimension name (e.g. time) to transform along
+        n_points: Number of log-spaced decay times
+        regularization: Tikhonov weight, relative to sqrt(number of samples)
+    Returns:
+        DataArray with dim replaced by 'decay_time' (same units as dim),
+        spanning the sample spacing up to the measured time window
+    Raises:
+        ValueError: If dim is not in data.dims or has fewer than 3 points
+    """
+    if dim not in data.dims:
+        raise ValueError(f"Dimension '{dim}' not found in data (has: {list(data.dims)})")
+    times = np.asarray(data.coords[dim].values, dtype=float)
+    if times.size < 3:
+        raise ValueError(f"Dimension '{dim}' has size {times.size}, need at least 3")
+    decay_times = decay_time_axis(times, n_points)
+
+    traces = np.moveaxis(np.asarray(data.values, dtype=float), data.get_axis_num(dim), -1)
+    flat = traces.reshape(-1, times.size)
+    spectra = np.full((flat.shape[0], decay_times.size), np.nan)
+    for row, trace in enumerate(flat):
+        valid = np.isfinite(trace) & np.isfinite(times)
+        if valid.sum() >= 3:
+            spectra[row] = _decay_spectrum_1d(
+                times[valid], trace[valid], decay_times, regularization)
+    spectra = np.moveaxis(
+        spectra.reshape(traces.shape[:-1] + (decay_times.size,)),
+        -1, data.get_axis_num(dim))
+
+    decay_dim = 'decay_time'
+    existing = set(d for d in data.dims if d != dim) | (set(data.coords) - {dim})
+    while decay_dim in existing:
+        decay_dim = 'decay_' + decay_dim
+    new_dims = [d if d != dim else decay_dim for d in data.dims]
+    coords = {d: data.coords[d] for d in data.dims if d != dim and d in data.coords}
+    coords[decay_dim] = xr.Variable(
+        decay_dim, decay_times,
+        attrs={'units': data.coords[dim].attrs.get('units', ''), 'long_name': 'decay time'})
+    return xr.DataArray(spectra, dims=new_dims, coords=coords)
+
+
+def decay_time_axis(times: np.ndarray, n_points: int = DECAY_TIME_POINTS) -> np.ndarray:
+    """Log-spaced decay times from the smallest sample spacing to the time window."""
+    times = np.sort(np.asarray(times, dtype=float)[np.isfinite(times)])
+    spacing = np.diff(times)
+    spacing = spacing[spacing > 0]
+    if spacing.size == 0:
+        raise ValueError("Need at least two distinct time points for a decay spectrum")
+    return np.logspace(
+        np.log10(spacing.min()), np.log10(times[-1] - times[0]), n_points)
+
+
+def _decay_spectrum_1d(
+    times: np.ndarray, trace: np.ndarray, decay_times: np.ndarray,
+    regularization: float,
+) -> np.ndarray:
+    """Non-negative decay amplitudes of one trace, see `compute_decay_spectrum`."""
+    order = np.argsort(times)
+    times, trace = times[order], trace[order]
+    sign = 1.0 if trace[0] >= trace[-1] else -1.0
+    basis = np.exp(-(times - times[0])[:, None] / decay_times[None, :])
+    offset = np.ones((times.size, 1))
+    n_amplitudes = decay_times.size
+    penalty = np.zeros((n_amplitudes, n_amplitudes + 2))
+    penalty[:, :n_amplitudes] = regularization * np.sqrt(times.size) * np.eye(n_amplitudes)
+    system = np.vstack([np.hstack([basis, offset, -offset]), penalty])
+    target = np.concatenate([sign * trace, np.zeros(n_amplitudes)])
+    amplitudes, _ = nnls(system, target, maxiter=50 * system.shape[1])
+    return amplitudes[:n_amplitudes]
+
+
 def bin_over_axis(
     data: xr.DataArray,
     dim: list[str],
@@ -199,7 +293,7 @@ def bin_over_axis(
     kept_dims = [d for d in data.dims if d not in dim]
     axes_to_bin = [data.get_axis_num(d) for d in dim]
 
-    data_np = data.values.copy()
+    data_np = data.values
 
     # Handle arbok sentinel dimensions (last value is padding)
     arbok_axes = sorted(
@@ -277,24 +371,56 @@ def _vectorized_histogram(flat: np.ndarray, bin_edges: np.ndarray) -> np.ndarray
     flat_2d = flat.reshape(-1, n_samples)
     n_rows = flat_2d.shape[0]
 
-    # Use digitize to assign each value to a bin
-    # Replace NaN with a value that maps outside bins
-    work = flat_2d.copy()
-    nan_mask = ~np.isfinite(work)
-    work[nan_mask] = bin_edges[0] - 1  # maps to bin 0 (out of range)
+    # Comparisons with NaN are False, so NaN and ±inf fall out of range
+    in_range = (flat_2d >= bin_edges[0]) & (flat_2d <= bin_edges[-1])
+    indices = _bin_indices(flat_2d, bin_edges, in_range)
 
-    indices = np.digitize(work, bin_edges)  # values 0..n_bins+1
-    # Clip to valid bin range: bins are 1..n_bins, 0 and n_bins+1 are out-of-range
-    indices = np.clip(indices, 1, n_bins) - 1  # now 0..n_bins-1
-
-    # Zero out contributions from NaN and out-of-range values
-    in_range = (work >= bin_edges[0]) & (work <= bin_edges[-1]) & (~nan_mask)
-
-    # Build histogram via scatter-add
-    hist = np.zeros((n_rows, n_bins), dtype=np.intp)
-    row_idx = np.arange(n_rows)[:, np.newaxis]
-    # Use np.add.at for unbuffered in-place addition
-    np.add.at(hist, (np.broadcast_to(row_idx, flat_2d.shape)[in_range],
-                     indices[in_range]), 1)
+    # Histogram of all rows at once via one bincount. Each row gets n_bins + 1
+    # slots; the extra overflow slot collects out-of-range values and is dropped.
+    row_offsets = np.arange(n_rows, dtype=np.intp)[:, np.newaxis] * (n_bins + 1)
+    hist = np.bincount(
+        (indices + row_offsets).ravel(), minlength=n_rows * (n_bins + 1))
+    hist = hist.reshape(n_rows, n_bins + 1)[:, :n_bins]
 
     return hist.reshape(batch_shape + (n_bins,))
+
+
+def _bin_indices(
+    values: np.ndarray, bin_edges: np.ndarray, in_range: np.ndarray
+) -> np.ndarray:
+    """
+    Bin index of each value, matching `np.digitize` semantics: bin i holds
+    edges[i] <= v < edges[i+1], the last bin also includes the right edge.
+    Values outside `in_range` get the overflow index n_bins.
+
+    Args:
+        values: Array of values
+        bin_edges: 1D array of increasing bin edges
+        in_range: Boolean mask of finite values within [edges[0], edges[-1]]
+    Returns:
+        Integer array of the same shape with indices in 0..n_bins
+    """
+    n_bins = len(bin_edges) - 1
+    widths = np.diff(bin_edges)
+    if not np.allclose(widths, widths[0]):
+        indices = np.searchsorted(bin_edges, values, side='right') - 1
+        return np.where(in_range, np.minimum(indices, n_bins - 1), n_bins)
+
+    # Uniform bins (the default): arithmetic is much faster than a binary search
+    scale = n_bins / (bin_edges[-1] - bin_edges[0])
+    with np.errstate(invalid='ignore'):
+        position = np.where(in_range, (values - bin_edges[0]) * scale, n_bins)
+    indices = position.astype(np.intp)
+    np.minimum(indices, n_bins - 1, out=indices, where=in_range)
+
+    # Float rounding can misplace values sitting right at a bin edge; fix those
+    fraction = position - indices
+    near_edge = in_range & ((fraction < 1e-6) | (fraction > 1 - 1e-6))
+    if near_edge.any():
+        near_values = values[near_edge]
+        near_indices = indices[near_edge]
+        near_indices -= near_values < bin_edges[near_indices]
+        near_indices += ((near_values >= bin_edges[near_indices + 1])
+                         & (near_indices < n_bins - 1))
+        indices[near_edge] = near_indices
+    return indices
