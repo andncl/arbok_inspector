@@ -21,13 +21,15 @@ dependencies = [
     "SQLAlchemy ~= 2.0",
     "qcodes~=0.54.4",
     "xarray~=2026.1",
-    "zarr ~= 2.18"
+    "zarr ~= 2.18",
+    "scipy~=1.17",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = [
     "pytest~=9.0",
+    "pytest-asyncio~=1.4",
     "pytest-cov~=7.0",
 ]
 
@@ -50,3 +52,9 @@ arbok-inspector-dev = "arbok_inspector.dev:main"
 
 [tool.uv]
 package = true
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "benchmark: performance regression tests on large synthetic datasets",
+]
