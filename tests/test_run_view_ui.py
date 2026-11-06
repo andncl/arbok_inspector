@@ -261,3 +261,99 @@ async def test_font_size_default_and_step(show_run):
         font.value = DEFAULT_FONT_SIZE + FONT_SIZE_STEP
         await session.plot_grid.wait_idle()
         assert plot.figure["layout"]["xaxis"]["tickfont"]["size"] == 17
+
+
+def switch_after_label(user, label: str):
+    """The switch in the same actions row as the given label."""
+    label_element = next(e for e in user.find(ui.label).elements if e.text == label)
+    return next(e for e in label_element.parent_slot.parent if isinstance(e, ui.switch))
+
+
+async def test_ridge_switch_and_csv_download(show_run):
+    from tests.test_decay_spectrum import make_decay_dataset
+    simulation, _ = show_run(make_decay_dataset())
+    async with simulation as user:
+        session = await open_run(user)
+        select_for(user, "time").value = "decay"
+        await session.plot_grid.wait_idle()
+        [plot] = plots(user)
+        assert len(plot.figure["data"]) == 1
+
+        switch_after_label(user, "Ridge:").value = True
+        await session.plot_grid.wait_idle()
+        assert [t.get("name") for t in plot.figure["data"]][1] == "ridge"
+
+        user.find("CSV").click()
+        response = await user.download.next()
+        assert "readout.I peak decay_time (s)" in response.text
+
+
+async def test_ridge_csv_without_spectrum_warns(show_run):
+    simulation, _ = show_run(make_dataset_4d())
+    async with simulation as user:
+        await open_run(user)
+        user.find("CSV").click()
+        await user.should_see("Ridge readout needs an FFT or decay dimension")
+
+
+async def test_python_button_shows_snippet(show_run):
+    simulation, _ = show_run(make_dataset_4d())
+    async with simulation as user:
+        await open_run(user)
+        user.find("Python").click()
+        code = next(c for c in user.find(ui.code).elements if "data = {}" in c.content)
+        assert "arr.mean(['iteration'])" in code.content
+        assert "arr.isel({'rep': 0}).squeeze()" in code.content
+
+
+async def test_colour_range_controls(show_run):
+    simulation, _ = show_run(make_dataset_4d())
+    async with simulation as user:
+        session = await open_run(user)
+        [plot] = plots(user)
+        z_toggle = next(t for t in user.find(ui.toggle).elements if "percentile" in t.options)
+        z_toggle.value = "manual"
+        z_min = next(n for n in user.find(ui.number).elements if n.props.get("label") == "z min")
+        z_max = next(n for n in user.find(ui.number).elements if n.props.get("label") == "z max")
+        assert z_min.visible
+        z_min.value, z_max.value = -0.25, 0.25
+        await session.plot_grid.wait_idle()
+        trace = plot.figure["data"][0]
+        assert (trace["zmin"], trace["zmax"]) == (-0.25, 0.25)
+        z_toggle.value = "auto"
+        await session.plot_grid.wait_idle()
+        assert not z_min.parent_slot.parent.visible
+        assert plot.figure["data"][0].get("zauto") is None
+
+
+async def test_export_format_toggle(show_run):
+    simulation, _ = show_run(make_dataset_4d())
+    async with simulation as user:
+        session = await open_run(user)
+        [plot] = plots(user)
+        assert plot.figure["config"]["toImageButtonOptions"]["format"] == "svg"
+        export_toggle = next(t for t in user.find(ui.toggle).elements if "svg" in t.options)
+        export_toggle.value = "png"
+        await session.plot_grid.wait_idle()
+        assert plot.figure["config"]["toImageButtonOptions"]["format"] == "png"
+
+
+async def test_snapshot_section_is_searchable(show_run, monkeypatch):
+    from tests.test_inspector_tools import QCODES_LIKE_SNAPSHOT
+    monkeypatch.setattr(
+        ConcreteRun, "get_snapshot", lambda self: QCODES_LIKE_SNAPSHOT, raising=False)
+    simulation, _ = show_run(make_dataset_4d())
+    async with simulation as user:
+        await open_run(user)
+        expansion = next(e for e in user.find(ui.expansion).elements
+                         if e.props.get("label") == "instrument snapshot")
+        expansion.value = True
+        [table] = user.find(ui.table).elements
+        assert {row["name"] for row in table.rows} >= {"magnet_field", "temperature"}
+        search = next(i for i in user.find(ui.input).elements
+                      if i.props.get("label") == "Search parameters")
+        search.value = "field"
+        assert table.filter == "field"
+        expansion.value = False
+        expansion.value = True
+        assert len(user.find(ui.table).elements) == 1, "table must only be built once"

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Callable, Iterable
 
 from abc import ABC, abstractmethod
 import ast
+import json
 
 from arbok_inspector.classes.dim import Dim
 from arbok_inspector.classes.view_state import ViewState
@@ -248,6 +249,17 @@ class BaseRun(ABC):
         if self._on_dim_changed:
             self._on_dim_changed(dim)
 
+    def get_snapshot(self) -> dict | None:
+        """Station snapshot stored with the run (QCoDeS 'snapshot' column), if any."""
+        raw = self.database_columns.get('snapshot', {}).get('value')
+        if not raw:
+            return None
+        try:
+            snapshot = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+        except (TypeError, ValueError):
+            return None
+        return snapshot if isinstance(snapshot, dict) else None
+
     def update_plot_selection(self, selected: bool, readout_name: str) -> bool:
         """
         Add or remove a result from the plot selection.
@@ -328,7 +340,7 @@ class BaseRun(ABC):
         self.last_subset = subset
         return subset
 
-    def _resolve_dim(self, name: str) -> str:
+    def resolve_dim(self, name: str) -> str:
         """Map a (possibly parallel) coordinate name to the dimension it spans."""
         if name in self.full_data_set.dims:
             return name
@@ -349,7 +361,7 @@ class BaseRun(ABC):
         self, view: ViewState, names: list[str], force: bool = False
     ) -> dict[str, DataArray]:
         """Mean over the average dims, cached per variable."""
-        avg_dims = tuple(self._resolve_dim(d) for d in view.avg_dims)
+        avg_dims = tuple(self.resolve_dim(d) for d in view.avg_dims)
         cache = self._cache_for('avg', (self._data_version, avg_dims), force)
         for name in names:
             if name not in cache:
@@ -363,7 +375,7 @@ class BaseRun(ABC):
         bins: int | list = 51,
     ) -> dict[str, DataArray]:
         """Histogram over the average dims (histogram mode), cached per variable."""
-        avg_dims = tuple(self._resolve_dim(d) for d in view.avg_dims)
+        avg_dims = tuple(self.resolve_dim(d) for d in view.avg_dims)
         bins_key = bins if isinstance(bins, int) else tuple(bins)
         cache = self._cache_for(
             'binned', (self._data_version, avg_dims, bins_key), force)
@@ -382,9 +394,9 @@ class BaseRun(ABC):
         """
         if view.fft_dim is None:
             raise ValueError("No dimension assigned to 'fft' role")
-        fft_dim = self._resolve_dim(view.fft_dim)
+        fft_dim = self.resolve_dim(view.fft_dim)
         averaged = self._averaged_data(view, names, force)
-        avg_dims = tuple(self._resolve_dim(d) for d in view.avg_dims)
+        avg_dims = tuple(self.resolve_dim(d) for d in view.avg_dims)
         cache = self._cache_for(
             'fft',
             (self._data_version, avg_dims, fft_dim, view.fft_representation),
@@ -415,9 +427,9 @@ class BaseRun(ABC):
         """
         if view.decay_dim is None:
             raise ValueError("No dimension assigned to 'decay' role")
-        decay_dim = self._resolve_dim(view.decay_dim)
+        decay_dim = self.resolve_dim(view.decay_dim)
         averaged = self._averaged_data(view, names, force)
-        avg_dims = tuple(self._resolve_dim(d) for d in view.avg_dims)
+        avg_dims = tuple(self.resolve_dim(d) for d in view.avg_dims)
         cache = self._cache_for(
             'decay', (self._data_version, avg_dims, decay_dim), force)
         result = {}
@@ -445,7 +457,7 @@ class BaseRun(ABC):
             selection = self.snapshot_view().selection
         if not selection:
             return data
-        indices = {self._resolve_dim(name): index for name, index in selection}
+        indices = {self.resolve_dim(name): index for name, index in selection}
         selected = {}
         for name, var in data.items():
             var_indices = {

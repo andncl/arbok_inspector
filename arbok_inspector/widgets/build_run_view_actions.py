@@ -13,6 +13,8 @@ from arbok_inspector.widgets.json_plot_settings_dialog import (
     JsonPlotSettingsDialog)
 from arbok_inspector.widgets.build_xarray_grid import request_plot_update
 from arbok_inspector.helpers.figure_builder import DEFAULT_FONT_SIZE, FONT_SIZE_STEP
+from arbok_inspector.helpers.code_snippet import python_snippet
+from arbok_inspector.analysis.ridge import ridge_csv
 
 if TYPE_CHECKING:
     from arbok_inspector.run_session import RunSession
@@ -123,6 +125,48 @@ def build_run_view_actions(session: RunSession) -> None:
                 value=settings.get("show_gridlines", True),
                 on_change=lambda e: toggle_gridlines(session, e.value),
             ).props('dense')
+        # --- Row 8: ridge readout (FFT / decay) ---
+        with ui.row().classes('w-full gap-1 items-center flex-nowrap'):
+            ui.label('Ridge:').classes('text-xs')
+            ui.switch(
+                value=settings.get("show_ridge", False),
+                on_change=lambda e: set_plot_setting(session, "show_ridge", e.value),
+            ).props('dense').tooltip('Mark the brightest point of FFT / decay spectra')
+            ui.button(
+                'CSV', icon='file_download', color='teal',
+                on_click=lambda: download_ridge_csv(session),
+                ).props('dense size=sm').classes('flex-1 min-w-0')\
+                .tooltip('Download the ridge positions')
+        # --- Row 9: colour range ---
+        with ui.row().classes('w-full gap-1 items-center flex-nowrap'):
+            ui.label('Z:').classes('text-xs')
+            z_mode = ui.toggle(
+                {'auto': 'auto', 'percentile': '1–99%', 'manual': 'set'},
+                value=settings.get("z_range_mode", "auto"),
+                on_change=lambda e: set_plot_setting(session, "z_range_mode", e.value),
+            ).props('dense size=sm no-caps toggle-color=purple')
+        with ui.row().classes('w-full gap-1 flex-nowrap') as manual_range:
+            for bound in ('min', 'max'):
+                ui.number(
+                    label=f'z {bound}',
+                    value=settings.get(f"z_{bound}"),
+                    on_change=lambda e, b=bound: set_plot_setting(session, f"z_{b}", e.value),
+                ).props('dense outlined').classes('flex-1 min-w-0 text-xs')
+        manual_range.bind_visibility_from(z_mode, 'value', value='manual')
+        # --- Row 10: image export format + Python snippet ---
+        with ui.row().classes('w-full gap-1 items-center flex-nowrap'):
+            ui.toggle(
+                {'svg': 'SVG', 'png': 'PNG'},
+                value=settings.get("export_format", "svg"),
+                on_change=lambda e: set_plot_setting(session, "export_format", e.value),
+            ).props('dense size=sm no-caps toggle-color=purple')\
+                .tooltip('Format of the camera button in the plot toolbar')
+            snippet_dialog = PythonSnippetDialog()
+            ui.button(
+                'Python', icon='code', color='indigo',
+                on_click=lambda: snippet_dialog.show(session),
+                ).props('dense size=sm').classes('flex-1 min-w-0')\
+                .tooltip('Python code reproducing this view')
 
 def on_interval_change(e, timer):
     try:
@@ -145,6 +189,33 @@ def set_plot_font_size(session: RunSession, value: float):
     session.settings["plot_font_size"] = size
     ui.notify(f'Font size set to {size}', position='top-right')
     request_plot_update()
+
+def set_plot_setting(session: RunSession, key: str, value) -> None:
+    """Store a tab-local plot setting and rebuild the plots."""
+    session.settings[key] = value
+    request_plot_update()
+
+def download_ridge_csv(session: RunSession):
+    """Download the ridge positions (brightest point of FFT / decay spectra)."""
+    csv = ridge_csv(session.run.last_subset or {})
+    if csv is None:
+        ui.notify('Ridge readout needs an FFT or decay dimension', type='warning')
+        return
+    ui.download(csv.encode(), f"{session.run.run_id}_ridge.csv")
+
+class PythonSnippetDialog:
+    """Dialog showing (and copying) Python code that reproduces the view."""
+
+    def __init__(self):
+        with ui.dialog() as self.dialog, ui.card().classes('max-w-[90vw]'):
+            ui.label('Reproduce this view in Python').classes('text-lg font-semibold')
+            self.code = ui.code('', language='python').classes('w-full')
+            ui.button('Close', on_click=self.dialog.close).props('dense')
+
+    def show(self, session: RunSession) -> None:
+        run = session.run
+        self.code.set_content(python_snippet(run, run.snapshot_view()))
+        self.dialog.open()
 
 def toggle_gridlines(session: RunSession, value: bool):
     """Toggle gridlines on/off for all plots, then rebuild."""

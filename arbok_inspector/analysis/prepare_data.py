@@ -126,7 +126,8 @@ def compute_fft(
         representation: One of 'PSD' (|FFT|²), 'Amplitude' (|FFT|),
                         'Real' (Re(FFT)), 'Imaginary' (Im(FFT))
     Returns:
-        DataArray with dim replaced by 'frequency'
+        DataArray with dim replaced by 'frequency' (name stored in
+        attrs['spectrum_dim'], it gets a prefix if 'frequency' is taken)
     Raises:
         ValueError: If dim is not in data.dims or has fewer than 2 points
     """
@@ -163,7 +164,8 @@ def compute_fft(
     coords = {d: data.coords[d] for d in data.dims if d != dim and d in data.coords}
     coords[freq_dim] = freqs
 
-    return xr.DataArray(output, dims=new_dims, coords=coords)
+    return xr.DataArray(output, dims=new_dims, coords=coords,
+                        attrs={"spectrum_dim": freq_dim})
 
 
 DECAY_TIME_POINTS = 100
@@ -193,8 +195,9 @@ def compute_decay_spectrum(
         n_points: Number of log-spaced decay times
         regularization: Tikhonov weight, relative to sqrt(number of samples)
     Returns:
-        DataArray with dim replaced by 'decay_time' (same units as dim),
-        spanning the sample spacing up to the measured time window
+        DataArray with dim replaced by 'decay_time' (same units as dim, name
+        stored in attrs['spectrum_dim']), spanning the sample spacing up to
+        the measured time window
     Raises:
         ValueError: If dim is not in data.dims or has fewer than 3 points
     """
@@ -226,7 +229,8 @@ def compute_decay_spectrum(
     coords[decay_dim] = xr.Variable(
         decay_dim, decay_times,
         attrs={'units': data.coords[dim].attrs.get('units', ''), 'long_name': 'decay time'})
-    return xr.DataArray(spectra, dims=new_dims, coords=coords)
+    return xr.DataArray(spectra, dims=new_dims, coords=coords,
+                        attrs={"spectrum_dim": decay_dim})
 
 
 def decay_time_axis(times: np.ndarray, n_points: int = DECAY_TIME_POINTS) -> np.ndarray:

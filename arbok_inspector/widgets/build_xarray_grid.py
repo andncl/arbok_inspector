@@ -144,6 +144,12 @@ class PlotGrid:
             show_gridlines=settings.get("show_gridlines", True),
             title_header=title_header,
             title_selection=title_formater(run),
+            show_ridge=settings.get("show_ridge", False),
+            z_range_mode=settings.get("z_range_mode", "auto"),
+            z_min=settings.get("z_min"),
+            z_max=settings.get("z_max"),
+            export_format=settings.get("export_format", "svg"),
+            export_filename=f"run{run.run_id}",
         )
 
     def _apply(self, bundle: FigureBundle) -> None:

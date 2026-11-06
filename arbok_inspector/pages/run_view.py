@@ -9,6 +9,7 @@ from nicegui import run as nicegui_run
 from arbok_inspector.state import inspector
 from arbok_inspector.run_session import RunSession, register_session
 from arbok_inspector.helpers.figure_builder import DEFAULT_FONT_SIZE
+from arbok_inspector.helpers.snapshot import flatten_snapshot
 from arbok_inspector.widgets.build_xarray_grid import PlotGrid, request_plot_update
 from arbok_inspector.widgets.build_xarray_html import build_xarray_html
 from arbok_inspector.widgets.build_run_view_actions import build_run_view_actions
@@ -113,6 +114,11 @@ async def run_page(run_id: str):
                 .classes(EXPANSION_CLASSES):
                 with ui.row():
                     ui.label("Working on it!  -Andi").classes(TITLE_CLASSES)
+            snapshot_expansion = ui.expansion(
+                'instrument snapshot', icon='tune', value=False)\
+                .classes(EXPANSION_CLASSES)
+            snapshot_expansion.on_value_change(
+                lambda e: _build_snapshot_view(run, snapshot_expansion) if e.value else None)
             with ui.expansion('metadata', icon='numbers', value=False)\
                 .classes(f"{EXPANSION_CLASSES}  overflow-x-auto"):
                 placeholder_metadata = {}
@@ -140,6 +146,11 @@ def _default_settings() -> dict:
         "log_scale_y": False,
         "log_scale_z": False,
         "show_gridlines": True,
+        "show_ridge": False,
+        "z_range_mode": "auto",
+        "z_min": None,
+        "z_max": None,
+        "export_format": "svg",
         "plot_dict_1D": copy.deepcopy(app.storage.general["plot_dict_1D"]),
         "plot_dict_2D": copy.deepcopy(app.storage.general["plot_dict_2D"]),
     }
@@ -283,6 +294,32 @@ def _update_sweep_dim_name(run: BaseRun, dim: Dim, new_name: str,
         del dim_widgets[old_name]
     dim_widgets[new_name] = dw
     request_plot_update()
+
+
+SNAPSHOT_COLUMNS = [
+    {'name': 'name', 'label': 'Parameter', 'field': 'name', 'align': 'left', 'sortable': True},
+    {'name': 'value', 'label': 'Value', 'field': 'value', 'align': 'left'},
+    {'name': 'unit', 'label': 'Unit', 'field': 'unit', 'align': 'left'},
+]
+
+
+def _build_snapshot_view(run: BaseRun, container: ui.expansion) -> None:
+    """Searchable table of all instrument parameters, built on first expand."""
+    if getattr(container, 'snapshot_built', False):
+        return
+    container.snapshot_built = True
+    rows = flatten_snapshot(run.get_snapshot())
+    with container:
+        if not rows:
+            ui.label('No instrument snapshot stored with this run').classes('text-gray-400')
+            return
+        search = ui.input('Search parameters', placeholder='e.g. field, temperature')\
+            .props('dense clearable').classes('w-full')
+        table = ui.table(
+            columns=SNAPSHOT_COLUMNS, rows=rows, row_key='name',
+            pagination={'rowsPerPage': 20, 'sortBy': 'name'},
+        ).props('dense flat').classes('w-full')
+        search.bind_value(table, 'filter')
 
 
 def load_qua_code(run: BaseRun, placeholder: dict):

@@ -20,6 +20,7 @@ from plotly.colors import get_colorscale
 from plotly.exceptions import PlotlyError
 from matplotlib.ticker import MaxNLocator, LogLocator
 
+from arbok_inspector.analysis.ridge import ridge_line, spectrum_dim_of
 from arbok_inspector.helpers.string_formaters import axis_label_formater
 
 if TYPE_CHECKING:
@@ -33,6 +34,9 @@ TITLE_FONT_SIZE = 10
 DEFAULT_MAX_HEATMAP_POINTS = 1000
 DEFAULT_FONT_SIZE = 15
 FONT_SIZE_STEP = 2
+Z_RANGE_MODES = ('auto', 'percentile', 'manual')
+DEFAULT_Z_PERCENTILES = (1.0, 99.0)
+RIDGE_STYLE = {"color": "#00e5ff", "width": 1.5}
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,13 @@ class PlotSettings:
     title_header: str = ""
     title_selection: str = ""
     max_heatmap_points: int = DEFAULT_MAX_HEATMAP_POINTS
+    show_ridge: bool = False
+    z_range_mode: str = 'auto'
+    z_min: float | None = None
+    z_max: float | None = None
+    z_percentiles: tuple[float, float] = DEFAULT_Z_PERCENTILES
+    export_format: str = 'svg'
+    export_filename: str = 'plot'
 
 
 @dataclass
@@ -150,6 +161,7 @@ def create_1d_figure(
     apply_axis_scale(plot_dict, settings.log_x, settings.log_y)
     apply_gridlines(plot_dict, settings.show_gridlines)
     stripped = strip_data(plot_dict)
+    apply_export_config(plot_dict, settings, "lines")
     plot_dict["layout"]["uirevision"] = _ui_revision(view, settings)
     resolve_template(plot_dict)
     return plot_dict, stripped, warnings
@@ -172,6 +184,7 @@ def create_2d_figure(
         y_dim = next((d for d in result.dims if d != x_base), result.dims[0])
     if x_base != result.dims[1]:
         result = result.transpose()
+    full_result = result
     full_shape = result.shape
     result = decimate(result, settings.max_heatmap_points)
 
@@ -198,12 +211,83 @@ def create_2d_figure(
     apply_axis_scale(plot_dict, settings.log_x, settings.log_y)
     apply_colorscale_log(plot_dict, settings.log_z)
     stripped = strip_data(plot_dict)
+    # Applied after strip_data so they never end up in a template via the JSON editor
+    apply_color_range(plot_dict, settings)
     if settings.show_gridlines:
         add_heatmap_gridlines(
             plot_dict, x_data, y_data, settings.log_x, settings.log_y)
+    if settings.show_ridge:
+        add_ridge_trace(plot_dict, full_result, x_dim, y_dim)
+    apply_export_config(plot_dict, settings, result_name.replace("__", "."))
     plot_dict["layout"]["uirevision"] = _ui_revision(view, settings)
     resolve_template(plot_dict)
     return plot_dict, stripped
+
+
+def add_ridge_trace(
+        plot_dict: dict, result: DataArray, x_dim: str, y_dim: str) -> None:
+    """Overlay the brightest point along the spectrum axis (FFT / decay only)."""
+    dim = spectrum_dim_of(result)
+    if dim is None:
+        return
+    ridge = to_plot_array(ridge_line(result, dim).values)
+    y_base = result.coords[y_dim].dims[0] if y_dim in result.coords else y_dim
+    if dim == y_base:
+        x, y = to_plot_array(result.coords[x_dim].values), ridge
+    else:
+        x, y = ridge, to_plot_array(result.coords[y_dim].values)
+    plot_dict["data"].append({
+        "type": "scatter", "mode": "lines+markers", "name": "ridge",
+        "x": x, "y": y, "line": dict(RIDGE_STYLE),
+        "marker": {"size": 4, "color": RIDGE_STYLE["color"]},
+        "showlegend": False,
+    })
+
+
+def apply_color_range(plot_dict: dict, settings: PlotSettings) -> None:
+    """
+    Set the heatmap colour range: 'percentile' clips at `z_percentiles`,
+    'manual' uses `z_min`/`z_max` (in data units; a missing bound stays at the
+    data extreme). With log z the range is applied in log space.
+    """
+    if settings.z_range_mode == 'auto':
+        return
+    trace = plot_dict["data"][0]
+    z = _numeric(trace.get("z"))
+    if z is None:
+        return
+    finite = z[np.isfinite(z)]
+    if finite.size == 0:
+        return
+    if settings.z_range_mode == 'percentile':
+        lo, hi = np.percentile(finite, settings.z_percentiles)
+    else:
+        lo = _color_value(settings.z_min, settings.log_z)
+        hi = _color_value(settings.z_max, settings.log_z)
+        lo = finite.min() if lo is None else lo
+        hi = finite.max() if hi is None else hi
+    if not lo < hi:
+        return
+    trace["zmin"], trace["zmax"], trace["zauto"] = float(lo), float(hi), False
+
+
+def _color_value(value: float | None, log_z: bool) -> float | None:
+    if value is None:
+        return None
+    if log_z:
+        return math.log10(value) if value > 0 else None
+    return float(value)
+
+
+def apply_export_config(plot_dict: dict, settings: PlotSettings, name: str) -> None:
+    """Format and file name of the plot toolbar's download button."""
+    config = plot_dict.setdefault("config", {})
+    options = dict(config.get("toImageButtonOptions") or {})
+    options["format"] = settings.export_format
+    options["filename"] = f"{settings.export_filename}_{name}".replace("/", "_")
+    if settings.export_format == 'png':
+        options.setdefault("scale", 2)
+    config["toImageButtonOptions"] = options
 
 
 def resolve_template(plot_dict: dict) -> None:

@@ -137,3 +137,111 @@ async def test_run_page_with_real_qcodes_runs(qcodes_db, monkeypatch):
         z_second = np.asarray(user_a.find(ui.plotly).elements.pop().figure["data"][0]["z"])
         np.testing.assert_allclose(z_second, z_first + 10.0, rtol=1e-6)
         assert session_b.run is not session.run
+
+
+# ─── "Copy as Python" snippet, executed against the real database ────────
+
+import xarray as xr
+
+from arbok_inspector.helpers.code_snippet import python_snippet
+from arbok_inspector.helpers.snapshot import flatten_snapshot
+
+
+def _configure_average_with_selection(run):
+    run.update_subset_dims(run.dim_axis_option['y-axis'], 'select_value', 3)
+
+
+def _configure_histogram(run):
+    run.update_subset_dims(run.dim_axis_option['y-axis'], 'average')
+    run.show_histogram = True
+
+
+def _configure_fft(run):
+    run.update_subset_dims(run.dim_axis_option['x-axis'], 'fft')
+    run.fft_freq_range = {'min': 1, 'max': 3}
+
+
+def _configure_decay(run):
+    run.update_subset_dims(run.dim_axis_option['x-axis'], 'decay')
+    run.decay_range = {'min': 5, 'max': 60}
+
+
+@pytest.mark.parametrize("configure", [
+    pytest.param(lambda run: None, id="average"),
+    pytest.param(_configure_average_with_selection, id="average+select"),
+    pytest.param(_configure_histogram, id="histogram"),
+    pytest.param(_configure_fft, id="fft+range"),
+    pytest.param(_configure_decay, id="decay+range"),
+])
+def test_python_snippet_reproduces_plotted_data(qcodes_db, configure):
+    db_path, (run_id, _) = qcodes_db
+    run = QcodesRun(run_id, db_path=db_path)
+    run.prepare_run(avg_axis="iteration")
+    configure(run)
+    view = run.snapshot_view()
+    expected = run.compute_subset(view)
+
+    namespace = {}
+    exec(python_snippet(run, view), namespace)  # noqa: S102 — our own generated code
+    actual = namespace["data"]
+    assert set(actual) == set(expected)
+    for name in expected:
+        xr.testing.assert_allclose(actual[name], expected[name])
+
+
+def test_python_snippet_is_readable(qcodes_db):
+    db_path, (run_id, _) = qcodes_db
+    run = QcodesRun(run_id, db_path=db_path)
+    run.prepare_run(avg_axis="iteration")
+    snippet = python_snippet(run, run.snapshot_view())
+    assert f"load_by_id({run_id})" in snippet
+    assert "arr.mean(['iteration'])" in snippet
+    assert "# plotted with x = frequency, y = voltage" in snippet
+
+
+# ─── Instrument snapshot ─────────────────────────────────────────────────
+
+@pytest.fixture
+def qcodes_run_with_station(tmp_path):
+    """A run recorded with a QCoDeS Station holding a dummy instrument."""
+    from qcodes.instrument_drivers.mock_instruments import DummyInstrument
+    from qcodes.station import Station
+    old_location = qc_config["core"]["db_location"]
+    initialise_or_create_database_at(tmp_path / "station.db")
+    new_experiment("exp", sample_name="sample")
+    dac = DummyInstrument("snapshot_test_dac", gates=["ch1", "ch2"])
+    dac.ch1.unit = "V"
+    dac.ch1(0.25)
+    station = Station(dac)
+    try:
+        signal = ManualParameter("signal")
+        meas = Measurement(station=station)
+        meas.register_parameter(dac.ch2)
+        meas.register_parameter(signal, setpoints=(dac.ch2,))
+        with meas.run() as saver:
+            for v in range(3):
+                saver.add_result((dac.ch2, v), (signal, v))
+            run_id = saver.run_id
+        yield tmp_path / "station.db", run_id
+    finally:
+        dac.close()
+        qc_config["core"]["db_location"] = old_location
+
+
+def test_snapshot_lists_instrument_parameters(qcodes_run_with_station):
+    db_path, run_id = qcodes_run_with_station
+    run = QcodesRun(run_id, db_path=db_path)
+    run.prepare_run()
+    rows = {row["name"]: row for row in flatten_snapshot(run.get_snapshot())}
+    assert rows["snapshot_test_dac_ch1"]["value"] == "0.25"
+    assert rows["snapshot_test_dac_ch1"]["unit"] == "V"
+
+
+def test_run_without_station_lists_measured_parameters(qcodes_db):
+    """QCoDeS stores a snapshot of the registered parameters even without a Station."""
+    db_path, (run_id, _) = qcodes_db
+    run = QcodesRun(run_id, db_path=db_path)
+    run.prepare_run()
+    rows = {row["name"]: row for row in flatten_snapshot(run.get_snapshot())}
+    assert {"signal", "voltage", "frequency", "iteration"} <= set(rows)
+    assert rows["signal"]["unit"] == "A"
