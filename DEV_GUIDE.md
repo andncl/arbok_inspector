@@ -42,9 +42,12 @@ classes/
 analysis/
   analysis_base.py         # Minimal base class for analysis extensions
   prepare_data.py          # Data averaging (xarray .mean()), histogram binning, FFT, decay spectrum
+  ridge.py                 # Ridge readout: brightest point of FFT / decay spectra, CSV export
 helpers/
   figure_builder.py        # Pure Plotly figure dicts (numpy arrays, no go.Figure), thread-safe
   render_scheduler.py      # One render at a time, "latest request wins" coalescing
+  code_snippet.py          # "Copy as Python": code reproducing the current view
+  snapshot.py              # Flatten a QCoDeS station snapshot into searchable rows
   string_formaters.py      # Plot title and axis label formatting
   unit_formater.py         # SI prefix formatting (G, M, k, m, µ, n)
 configurations/
@@ -195,6 +198,26 @@ peaks at s = 0 regardless of τ.
 - **Oscillating decays are not supported** (not representable by real exponentials) — use FFT
 - The range slider (indices into the decay-time axis) only slices the cached spectrum
 - Mutually exclusive with FFT and histogram mode
+
+## Analysis Tools
+
+All controls live in the Actions card; settings are tab-local (`session.settings`).
+
+- **Ridge** (FFT / decay only): overlays the brightest point along the spectrum axis on
+  each heatmap; **CSV** downloads it (e.g. decay time per voltage). FFT and decay results
+  name their output dim in `attrs['spectrum_dim']`, which survives selection.
+- **Z range**: `auto`, `1–99%` percentile clipping, or manual `z min`/`z max` (data units,
+  converted to log space with Log Z).
+- **SVG / PNG**: format of the plot toolbar's camera button (`toImageButtonOptions`).
+  Heatmap pixels stay raster inside the SVG (a plotly.js limitation); axes and text are vector.
+- **Python**: code that reproduces the plotted data in a notebook, in the same order as
+  `compute_subset` (average/bin → transform → range → select). Tests execute it against a
+  real QCoDeS database and compare with the app's result.
+- **Instrument snapshot** (expansion on the run page): searchable table of all parameters
+  in the run's QCoDeS snapshot, built on first expand.
+
+Ridge, colour range and export config are applied after `strip_data`, so they never get
+baked into a template through the JSON editor.
 
 ## Key Patterns
 
