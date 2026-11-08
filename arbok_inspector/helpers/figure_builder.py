@@ -65,6 +65,7 @@ class PlotSettings:
 class FigureBundle:
     """Result of one render computation."""
     figures: list[dict] = field(default_factory=list)
+    exports: list[tuple[str, dict]] = field(default_factory=list)
     last_figure_1d: dict | None = None
     last_figure_2d: dict | None = None
     warnings: list[str] = field(default_factory=list)
@@ -86,11 +87,15 @@ def build_figures(
     bundle = FigureBundle()
     results_same_trace = {}
 
+    def add(figure: dict) -> None:
+        bundle.figures.append(resolved_figure(figure))
+        bundle.exports.append((_export_name(figure), export_figure(figure)))
+
     def add_1d(results: dict[str, DataArray]) -> None:
         figure, stripped, warnings = create_1d_figure(results, view, settings)
         bundle.warnings.extend(warnings)
         if figure is not None:
-            bundle.figures.append(figure)
+            add(figure)
             bundle.last_figure_1d = stripped
 
     for result_name in view.plot_selection:
@@ -104,7 +109,7 @@ def build_figures(
                 results_same_trace[result_name] = result
         elif result.ndim == 2:
             figure, stripped = create_2d_figure(result_name, result, view, settings)
-            bundle.figures.append(figure)
+            add(figure)
             bundle.last_figure_2d = stripped
     if results_same_trace:
         add_1d(results_same_trace)
@@ -163,7 +168,6 @@ def create_1d_figure(
     stripped = strip_data(plot_dict)
     apply_export_config(plot_dict, settings, "lines")
     plot_dict["layout"]["uirevision"] = _ui_revision(view, settings)
-    resolve_template(plot_dict)
     return plot_dict, stripped, warnings
 
 
@@ -220,7 +224,6 @@ def create_2d_figure(
         add_ridge_trace(plot_dict, full_result, x_dim, y_dim)
     apply_export_config(plot_dict, settings, result_name.replace("__", "."))
     plot_dict["layout"]["uirevision"] = _ui_revision(view, settings)
-    resolve_template(plot_dict)
     return plot_dict, stripped
 
 
@@ -290,22 +293,52 @@ def apply_export_config(plot_dict: dict, settings: PlotSettings, name: str) -> N
     config["toImageButtonOptions"] = options
 
 
-def resolve_template(plot_dict: dict) -> None:
+def export_figure(plot_dict: dict) -> dict:
     """
-    Replace plotly.py names that plotly.js does not know with their definitions:
-    the template (e.g. "plotly_dark") and colorscales (e.g. "magma", "magma_r").
+    Figure for the JSON download (e.g. for further processing with an LLM):
+    as plotted, but with readable template/colorscale names and without the
+    browser-only `config` and `uirevision`. Loads with `plotly.io.from_json`.
+    """
+    figure = {key: value for key, value in plot_dict.items() if key != "config"}
+    figure["layout"] = {
+        key: value for key, value in plot_dict["layout"].items() if key != "uirevision"}
+    return figure
+
+
+def _export_name(plot_dict: dict) -> str:
+    options = plot_dict.get("config", {}).get("toImageButtonOptions", {})
+    return options.get("filename", "plot")
+
+
+def resolved_figure(plot_dict: dict) -> dict:
+    """
+    Copy of the figure with plotly.py names that plotly.js does not know
+    replaced by their definitions: the template (e.g. "plotly_dark") and
+    colorscales (e.g. "magma", "magma_r").
 
     plotly.js has no named templates and only a few named colorscales; unknown
     names are silently replaced by its defaults. `go.Figure` used to expand
-    them. Done after `strip_data`, so the copy shown in the JSON editor keeps
-    the readable names. Unknown names are left as is.
+    them. The input keeps the readable names (JSON editor, JSON download);
+    only the dict/list structure is copied, data arrays are shared.
+    Unknown names are left as is.
     """
-    template = plot_dict["layout"].get("template")
+    figure = _copy_structure(plot_dict)
+    template = figure["layout"].get("template")
     if isinstance(template, str):
         resolved = _template_definition(template)
         if resolved is not None:
-            plot_dict["layout"]["template"] = resolved
-    _resolve_colorscales(plot_dict)
+            figure["layout"]["template"] = resolved
+    _resolve_colorscales(figure)
+    return figure
+
+
+def _copy_structure(node):
+    """Copy nested dicts and lists; leave arrays and other values shared."""
+    if isinstance(node, dict):
+        return {key: _copy_structure(value) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_copy_structure(item) for item in node]
+    return node
 
 
 def _resolve_colorscales(node) -> None:

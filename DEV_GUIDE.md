@@ -117,7 +117,8 @@ slider step only does `isel`, and an FFT range change only slices the cached FFT
 serialized by NiceGUI's orjson without `.tolist()` or `go.Figure` validation. Without
 `go.Figure`, plotly.py names must be expanded explicitly — template names
 (`"plotly_dark"`) and most colorscale names (`"magma"`); plotly.js silently falls back to
-its defaults (light theme, RdBu) otherwise — which `resolve_template()` does. Heatmap axes
+its defaults (light theme, RdBu) otherwise — which `resolved_figure()` does on a copy.
+The name-based original is what the JSON editor and the JSON download see. Heatmap axes
 longer than `PlotSettings.max_heatmap_points` (1000) are stride-decimated for display; the
 title then says "display downsampled". `layout.uirevision` keeps user zoom while only
 slider positions change.
@@ -213,6 +214,9 @@ All controls live in the Actions card; settings are tab-local (`session.settings
 - **Python**: code that reproduces the plotted data in a notebook, in the same order as
   `compute_subset` (average/bin → transform → range → select). Tests execute it against a
   real QCoDeS database and compare with the app's result.
+- **Plot JSON**: downloads each plotted figure (`FigureBundle.exports`) as plotly JSON, one
+  file per plot, e.g. for an LLM. Same data as displayed, but with readable template /
+  colorscale names and without `config` / `uirevision`; loads with `plotly.io.from_json`.
 - **Instrument snapshot** (expansion on the run page): searchable table of all parameters
   in the run's QCoDeS snapshot, built on first expand.
 

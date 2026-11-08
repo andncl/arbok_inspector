@@ -6,6 +6,7 @@ from io import BytesIO
 import xarray as xr
 
 from nicegui import ui
+from nicegui import json as nicegui_json
 from nicegui import run as nicegui_run
 
 from arbok_inspector.classes.dim import Dim
@@ -167,6 +168,12 @@ def build_run_view_actions(session: RunSession) -> None:
                 on_click=lambda: snippet_dialog.show(session),
                 ).props('dense size=sm').classes('flex-1 min-w-0')\
                 .tooltip('Python code reproducing this view')
+        with ui.row().classes('w-full gap-1 flex-nowrap'):
+            ui.button(
+                'Plot JSON', icon='data_object', color='indigo',
+                on_click=lambda: download_plot_json(session),
+                ).props('dense size=sm').classes('flex-1 min-w-0')\
+                .tooltip('Download the plotted figures as plotly JSON, e.g. for an LLM')
 
 def on_interval_change(e, timer):
     try:
@@ -202,6 +209,16 @@ def download_ridge_csv(session: RunSession):
         ui.notify('Ridge readout needs an FFT or decay dimension', type='warning')
         return
     ui.download(csv.encode(), f"{session.run.run_id}_ridge.csv")
+
+async def download_plot_json(session: RunSession):
+    """Download every plotted figure as a plotly JSON file (one file per plot)."""
+    exports = session.plot_grid.exports if session.plot_grid is not None else []
+    if not exports:
+        ui.notify('Nothing plotted yet', type='warning')
+        return
+    for name, figure in exports:
+        content = await nicegui_run.io_bound(nicegui_json.dumps, figure)
+        ui.download(content.encode(), f"{name}.json", media_type='application/json')
 
 class PythonSnippetDialog:
     """Dialog showing (and copying) Python code that reproduces the view."""

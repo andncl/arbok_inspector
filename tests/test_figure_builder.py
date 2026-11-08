@@ -383,3 +383,55 @@ class TestJsonEditorOrder:
     def test_dict_without_data_is_unchanged(self):
         from arbok_inspector.widgets.json_plot_settings_dialog import data_section_first
         assert data_section_first({"layout": {}}) == {"layout": {}}
+
+
+class TestPlotJsonExport:
+    """Figures for the JSON download: as plotted, readable names, loadable by plotly."""
+
+    @pytest.fixture
+    def bundle(self, run_3d, settings):
+        run_3d.plot_selection = ["readout__I", "readout__Q"]
+        settings = PlotSettings(**{**settings.__dict__, "export_filename": "run1",
+                                   "show_ridge": True, "z_range_mode": "percentile"})
+        view = run_3d.snapshot_view()
+        return build_figures(run_3d.compute_subset(view), view, settings)
+
+    def test_one_export_per_plotted_figure(self, bundle):
+        assert [name for name, _ in bundle.exports] == ["run1_readout.I", "run1_readout.Q"]
+
+    def test_keeps_readable_names(self, bundle):
+        _, figure = bundle.exports[0]
+        assert figure["layout"]["template"] == "plotly_dark"
+        assert figure["data"][0]["colorscale"] == "magma"
+
+    def test_display_figure_is_still_resolved(self, bundle):
+        assert isinstance(bundle.figures[0]["layout"]["template"], dict)
+        assert isinstance(bundle.figures[0]["data"][0]["colorscale"], list)
+
+    def test_browser_only_settings_are_dropped(self, bundle):
+        _, figure = bundle.exports[0]
+        assert "config" not in figure
+        assert "uirevision" not in figure["layout"]
+        assert "config" in bundle.figures[0]  # still used by the toolbar
+
+    def test_loads_with_plotly_and_matches_plot(self, bundle):
+        import plotly.io as pio
+        _, figure = bundle.exports[0]
+        loaded = pio.from_json(nicegui_json.dumps(figure))
+        np.testing.assert_allclose(
+            np.asarray(loaded.data[0].z, dtype=float), bundle.figures[0]["data"][0]["z"])
+        assert loaded.data[0].zmin == bundle.figures[0]["data"][0]["zmin"]
+        assert loaded.layout.template.layout.paper_bgcolor == "rgb(17,17,17)"
+
+    def test_data_arrays_are_shared_not_copied(self, bundle):
+        _, figure = bundle.exports[0]
+        assert figure["data"][0]["z"] is bundle.figures[0]["data"][0]["z"]
+
+    def test_resolved_figure_does_not_mutate_input(self):
+        from arbok_inspector.helpers.figure_builder import resolved_figure
+        figure = {"data": [{"type": "heatmap", "colorscale": "magma", "z": np.zeros((2, 2))}],
+                  "layout": {"template": "plotly_dark", "colorscale": {"sequential": "magma"}}}
+        original = copy.deepcopy(figure)
+        resolved_figure(figure)
+        assert figure["layout"] == original["layout"]
+        assert figure["data"][0]["colorscale"] == "magma"

@@ -57,6 +57,8 @@ class PlotGrid:
         self.session = session
         self.on_reloaded = on_reloaded
         self._plots: list[ui.plotly] = []
+        self.exports: list[tuple[str, dict]] = []
+        """(file name, figure) of the plotted figures, for the JSON download."""
         self._layout_key: tuple[int, int] | None = None
         self._scheduler = RenderScheduler(self._render)
         with ui.element('div').classes('relative w-full') as self._root:
@@ -170,9 +172,10 @@ class PlotGrid:
         if layout_key == self._layout_key and not any(p.is_deleted for p in self._plots):
             for plot, figure in zip(self._plots, figures):
                 plot.update_figure(figure)
-            return
-        self._build_grid(figures, num_columns=min(layout_key[1], len(figures)))
-        self._layout_key = layout_key
+        else:
+            self._build_grid(figures, num_columns=min(layout_key[1], len(figures)))
+            self._layout_key = layout_key
+        self.exports = bundle.exports  # after _build_grid, which clears them
 
     def _build_grid(self, figures: list[dict], num_columns: int) -> None:
         """Create a grid of plotly elements, `num_columns` per row."""
@@ -193,6 +196,7 @@ class PlotGrid:
                             self._plots.append(plot)
 
     def _clear(self) -> None:
+        self.exports = []
         self._area.clear()
         self._plots = []
         self._layout_key = None

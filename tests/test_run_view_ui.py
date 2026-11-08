@@ -357,3 +357,36 @@ async def test_snapshot_section_is_searchable(show_run, monkeypatch):
         expansion.value = False
         expansion.value = True
         assert len(user.find(ui.table).elements) == 1, "table must only be built once"
+
+
+async def test_plot_json_download(show_run):
+    import json as std_json
+    import plotly.io as pio
+    from tests.conftest import make_dataset_3d
+    simulation, _ = show_run(make_dataset_3d())
+    async with simulation as user:
+        session = await open_run(user)
+        user.find("readout.Q").click()
+        await session.plot_grid.wait_idle()
+        user.find("Plot JSON").click()
+        deadline = time.perf_counter() + 5
+        while len(user.download.http_responses) < 2:
+            assert time.perf_counter() < deadline, "expected one JSON file per plot"
+            await asyncio.sleep(0.05)
+        figures = [std_json.loads(r.text) for r in user.download.http_responses]
+        titles = sorted(f["layout"]["title"]["text"] for f in figures)
+        assert "<b>readout.I</b>" in titles[0] and "<b>readout.Q</b>" in titles[1]
+        assert all(f["layout"]["template"] == "plotly_dark" for f in figures)
+        response = user.download.http_responses[0]
+        assert pio.from_json(response.text).data[0].type == "heatmap"
+
+
+async def test_plot_json_without_plots_warns(show_run):
+    simulation, _ = show_run(make_dataset_4d())
+    async with simulation as user:
+        session = await open_run(user)
+        run = session.run
+        run.update_subset_dims(run.dim_axis_option["x-axis"], "average")
+        await session.plot_grid.refresh()
+        user.find("Plot JSON").click()
+        await user.should_see("Nothing plotted yet")
